@@ -8,7 +8,7 @@ Global options go before the subcommand: `coordinator [--home DIR] [--out JOBS_D
 ## The loop
 | Command | What it does |
 |---|---|
-| `coordinator init [ROOT] [--agents-dir docs/agents]` | Set up a project, never overwriting. Writes `coordinator.json` (settings as data) and, in the agents dir: `AGENT_RULES.md` (a short frame plus a generated block), `HEARTBEAT.md` (the check-in prompt), `LESSONS.md` (rules to adopt when their problem shows up), `HANDOFF.md`, an `AGENTS.md` pointer, an example `protected_data.json`, and `briefs/` (lane, research, review, finish). |
+| `coordinator init [ROOT] [--agents-dir docs/agents]` | Set up a project, never overwriting. Writes `coordinator.json` (settings as data) and, in the agents dir: `AGENT_RULES.md` (a short frame plus a generated block), `HEARTBEAT.md` (the check-in prompt), `LESSONS.md` (rules to adopt when their problem shows up), `HANDOFF.md`, an `AGENTS.md` pointer, an example `protected_data.json`, and `briefs/` (lane, research, review, finish, plan review). |
 | `coordinator checkin [--quiet] [--no-usage] [--json]` | The heartbeat. Shows the output of each `usage_commands` entry ("unavailable" if one fails, never zero) and the jobs that finished OK since the last check-in. NEEDS ATTENTION lists:<br>• a usage line at or above `checkpoint_usage_percent`;<br>• failed, stopped or stalled jobs, kept until `jobs ack`;<br>• lanes quiet longer than `silent_lane_minutes` (unless their bound job is still running);<br>• stale lanes, and lanes running longer than `fresh_start_hours`;<br>• lock waits over 30 minutes;<br>• a status file that missed the last `status_stale_commits` commits;<br>• ready tasks when nothing is running.<br>`--quiet` prints one line when nothing needs attention. |
 | `coordinator task add "TITLE" [--check CMD] [--after T1,T2] [--lane L]` | Add a task to `<agents_dir>/tasks.json`. `--check` is a shell command that must exit 0 before the task can be marked done. |
 | `coordinator task claim T3 --lane L` | Claim a task. Refused while its dependencies are open or another lane holds it. |
@@ -22,6 +22,7 @@ Global options go before the subcommand: `coordinator [--home DIR] [--out JOBS_D
 | `coordinator settled reopen S2 --why "WHAT CHANGED"` / `settled list` | Reopen an item when something changed that makes it worth another look; list them all. |
 | `coordinator handoff` | Show the lead's own handoff (`lead_handoff`, default `docs/agents/LEAD_HANDOFF.md`) and how old it is. The check-in flags it when it is missing or behind the commits. |
 | `coordinator heartbeat set --file PROMPT.txt --why "WHAT CHANGED"` / `heartbeat show` | Record a new check-in prompt with the reason the work needed it. It renders into `HEARTBEAT.md`, with the history of every change below it. |
+| `coordinator stop-check` | For a harness stop hook: when the lead is about to stop while it still has work it can do (a failed job, a quiet lane, a stale status file or lead handoff, a ready task with nothing running), it prints `{"decision": "block", "reason": ...}` with at most three items. It never blocks for usage or for anything that needs the user. After `heartbeat.stop_hook_max_blocks` blocks in a row (default 3) it lets the agent stop, and it won't block again for the same items. With nothing to do it prints nothing. Claude Code: `{"hooks": {"Stop": [{"hooks": [{"type": "command", "command": "coordinator stop-check"}]}]}}` in `.claude/settings.json`. |
 | `coordinator rule retire R7 --why "REASON"` | Drop a rule that no longer serves the work. |
 | `coordinator rule list [--all] [--json]` | Live rules; `--all` adds the superseded and retired ones. |
 | `coordinator rule render` | Rewrite the generated block of `AGENT_RULES.md` (decision boundary, models and budget, live rules) and `RULES_HISTORY.md`. Text outside the markers is kept. |
@@ -29,7 +30,7 @@ Global options go before the subcommand: `coordinator [--home DIR] [--out JOBS_D
 
 `coordinator.json` keys:
 - `agents_dir`, `status_file`;
-- `heartbeat`: `every_minutes`, `silent_lane_minutes`, `status_stale_commits`, `fresh_start_hours`;
+- `heartbeat`: `every_minutes`, `silent_lane_minutes`, `status_stale_commits`, `fresh_start_hours`, `stop_hook_max_blocks`;
 - `usage_commands`: a list of commands, each a string or a list of arguments;
 - `agents_command`: a command that prints the live agents as JSON, either an array or one object per line, with `name`, `state`, `updated` (epoch seconds or ISO), `context_tokens`, `model` and `account`. Use it to wrap your harness's agent list. With it, the check-in sees agents that never post to the board: quiet ones, ones over `relaunch_context_tokens`, and more than one strong-model agent on an account;
 - `lead_handoff`;

@@ -468,6 +468,34 @@ class HeartbeatDetailTests(Home):
         self.assertIn("2 strong-model agents on account nova", text)
 
 
+class StopCheckTests(Home):
+    def test_blocks_only_for_agent_work_and_never_loops(self):
+        from coordinator_kit import stopcheck
+        proj = Path(self._tmp.name) / "proj"
+        (proj / "docs" / "agents").mkdir(parents=True)
+        (proj / "TODO.md").write_text("s")
+        (proj / "docs" / "agents" / "LEAD_HANDOFF.md").write_text("h")
+        (proj / "coordinator.json").write_text(json.dumps({
+            "heartbeat": {"stop_hook_max_blocks": 2},
+            "usage_commands": [[PY, "-c", "print('99% used')"]]}))
+        cfg = Config.load(proj / "coordinator.json")
+        hook = {"session_id": "s1", "stop_hook_active": False}
+        self.assertIsNone(stopcheck.decide(cfg, hook, self.home))  # nothing to do, and usage is never checked
+        tasks.add(cfg, "write the parser")
+        first = stopcheck.decide(cfg, hook, self.home)
+        self.assertEqual(first["decision"], "block")
+        self.assertIn("ready task", first["reason"])
+        self.assertLessEqual(len(first["reason"].splitlines()), 4)
+        self.assertIsNotNone(stopcheck.decide(cfg, hook, self.home))
+        self.assertIsNone(stopcheck.decide(cfg, hook, self.home))  # cap reached: let it stop
+        self.assertIsNone(stopcheck.decide(cfg, hook, self.home))  # same items: don't start blocking again
+        jobs.launch("oops", [PY, "-c", "import sys; sys.exit(1)"], root=self.home, lock="none")
+        wait.wait([jobs.resolve("oops", root=self.home)], 30, 0.1)
+        self.assertEqual(stopcheck.decide(cfg, hook, self.home)["decision"], "block")  # something new
+        # the check-in's "since last time" mark is untouched by peeking
+        self.assertFalse((self.home / "checkins").exists() and any((self.home / "checkins").iterdir()))
+
+
 class MemoryLayerTests(unittest.TestCase):
     def setUp(self):
         self._tmp = tempfile.TemporaryDirectory()

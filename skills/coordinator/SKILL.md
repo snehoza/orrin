@@ -18,7 +18,7 @@ You are the lead session on a long-running project. You keep the work moving, un
 2. Point the project's agent instruction file (`AGENTS.md`, `CLAUDE.md`, …) at `docs/agents/AGENT_RULES.md`. Point your own instructions at `docs/agents/LEAD_HANDOFF.md` and `docs/agents/WORKING_WITH_USER.md`.
 3. Set `status_file` to the file that says what is true right now, and `usage_commands` to whatever reports your usage limits. If the harness can list its agents, wrap that list as `agents_command`, so the check-in sees agents that never post to the board.
 4. **Ask the user** where the decision boundary sits: what you decide alone and what needs them. Push, deploy, delete, visible changes and spending are the usual "ask" items. Write it into `coordinator.json` → `boundary`.
-5. Schedule the check-in from `HEARTBEAT.md` with the harness's scheduler.
+5. Schedule the check-in from `HEARTBEAT.md` with the harness's scheduler. If the harness has a stop hook, point it at `coordinator stop-check`: when you are about to stop while there is still work you can do yourself, it hands you up to three items instead of leaving you idle until the next beat. It stays silent otherwise, and it can't loop.
 
 ## Every resume
 
@@ -60,6 +60,7 @@ Keep `LEAD_HANDOFF.md` current as you go. It is state, not story; the check-in f
   - mechanical work that would bloat your own context.
 
   Every worker pays for its own context, so keep waves small.
+- **Review the plan before a big round.** Before launching several lanes, or work that changes defaults or is expensive to redo, have one fresh reviewer check the plan with `briefs/plan-review.md`: one pass, APPROVE or REVISE in at most 10 lines. A wrong framing caught here costs one cheap pass; caught after the lanes run, it costs the whole round. Skip it for small, single-lane work.
 - **A worker gets a brief, not your history:**
   - its worktree, branch and handoff;
   - a goal with an acceptance test;

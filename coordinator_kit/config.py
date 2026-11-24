@@ -17,7 +17,7 @@ DEFAULT = {
     "agents_dir": "docs/agents",
     "status_file": "TODO.md",
     "heartbeat": {"every_minutes": 30, "silent_lane_minutes": 45, "status_stale_commits": 10,
-                  "fresh_start_hours": 8},
+                  "fresh_start_hours": 8, "stop_hook_max_blocks": 3},
     "lead_handoff": "docs/agents/LEAD_HANDOFF.md",
     "usage_commands": [],
     # A command printing the live agents as JSON (an array, or one object per line):

@@ -143,7 +143,8 @@ def _mark_path(cfg: Config, root):
     return home(root) / "checkins" / f"{key}.json"
 
 
-def collect(cfg: Config, root=None, jobs_out=None, run_usage: bool = True) -> dict:
+def collect(cfg: Config, root=None, jobs_out=None, run_usage: bool = True, mark: bool = True) -> dict:
+    """``mark=False`` peeks without moving the last-check-in time (used by ``stop-check``)."""
     now = time.time()
     hb = cfg["heartbeat"]
     mark_path = _mark_path(cfg, root)
@@ -223,7 +224,8 @@ def collect(cfg: Config, root=None, jobs_out=None, run_usage: bool = True) -> di
             "running": running, "attention": attention, "anchor": anchor, "lanes": len(lanes),
             "agents": agents,
             "tasks": task_summary}
-    write_json(mark_path, {"time": now, "project": str(cfg.root)})
+    if mark:
+        write_json(mark_path, {"time": now, "project": str(cfg.root)})
     return data
 
 

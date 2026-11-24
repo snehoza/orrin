@@ -9,6 +9,8 @@ First release.
   - `coordinator task add/claim/done/reopen/list`: a dependency-aware task list where done needs a passing check or a completed job.
   - `coordinator jobs ack`: failures stay on the check-in until acknowledged.
   - The lead's memory layer: `rule add --for coordinator` (renders `WORKING_WITH_USER.md`), `coordinator settled` (`SETTLED.md`, with lookalike tasks flagged), `coordinator handoff` (`LEAD_HANDOFF.md`, flagged when stale), and `coordinator heartbeat set` (the check-in prompt's history).
+  - `coordinator stop-check`: a stop-hook helper that keeps the lead going while it has work it can do, capped so it never loops.
+  - `briefs/plan-review.md`: one reviewer, one pass, before a multi-lane or expensive round.
   - `agents_command`: the check-in reads the harness's own agent list (quiet agents, context size, strong models per account).
 - `coordinator jobs`: detached jobs with `.pid/.log/.done` markers, an exclusive/shared/no lock, a RAM guard, fail-fast, progress and ETA, smoke runs, and stop with the whole process tree.
 - `coordinator wait`: short blocking waits (exit 0 done, 1 failed, 3 still running).

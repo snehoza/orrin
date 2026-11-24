@@ -6,6 +6,7 @@ Copy the best fit into the agent's launch prompt. Fill every `{placeholder}` wit
 - `research-round.md`: a hypothesis-driven experiment behind an off-by-default switch.
 - `review-round.md`: independent review or blind judging of another lane's output.
 - `finish.md`: close work that is nearly done, then stop.
+- `plan-review.md`: one reviewer, one pass, before a multi-lane or expensive round.
 
 Every brief starts with the same header:
 

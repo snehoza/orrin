@@ -9,13 +9,13 @@ import time
 from importlib import resources
 from pathlib import Path
 
-from . import __version__, board, checkin, data, jobs, lead, lock, rules, settled, status, tasks, tidy, wait
+from . import __version__, board, checkin, data, jobs, lead, lock, rules, settled, status, stopcheck, tasks, tidy, wait
 from .config import NAME as CONFIG_NAME, DEFAULT as CONFIG_DEFAULT, Config
 from .home import home, human_age, tail_lines
 
 TEMPLATES = ("AGENT_RULES.md", "HEARTBEAT.md", "LESSONS.md", "LEAD_HANDOFF.md", "HANDOFF.md", "AGENTS.md", "protected_data.json",
              "briefs/README.md", "briefs/lane-round.md", "briefs/research-round.md", "briefs/review-round.md",
-             "briefs/finish.md")
+             "briefs/finish.md", "briefs/plan-review.md")
 
 
 def _dump(value) -> None:
@@ -408,6 +408,9 @@ def build_parser() -> argparse.ArgumentParser:
 
     ho = sub.add_parser("handoff", help="the lead's own handoff: where it is and how current")
     ho.set_defaults(func=cmd_handoff)
+
+    sc = sub.add_parser("stop-check", help="for a harness stop hook: keep the lead going while it has work it can do")
+    sc.set_defaults(func=lambda a: stopcheck.main(_cfg(a), a.home, a.out))
 
     tk = sub.add_parser("task", help="a task list where done needs evidence: add, claim, done, reopen, list")
     tks = tk.add_subparsers(dest="task_cmd", required=True)
