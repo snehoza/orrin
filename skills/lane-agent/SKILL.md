@@ -56,3 +56,4 @@ Run test suites and one-off scripts under the shared lock: `coordinator lock run
 
   Don't wait for the proofs yourself; the coordinator watches the markers.
 - Never delete data. Archive it with `coordinator data archive`, which refuses protected paths.
+- Don't edit the agent rules. If a rule got in the way of the work, or a new one would have helped, say so in your report with the evidence; the coordinator records it.

@@ -1,17 +1,27 @@
 # coordinator-kit
 
-Run several coding agents on one machine without them tripping over each other.
+Keep a coding agent working on a project around the clock, alone or with a team of worker agents, without it drifting from what you want.
 
-- **Detached jobs** survive the agent that started them and write completion markers that can't lie.
-- **Short blocking waits** keep agents cheap and still able to hear messages.
-- **A fair machine lock**, first come first served, has an exclusive mode for heavy work and a shared mode for tests. It is safe when a holder crashes.
-- **A lane board** shows who is doing what. **One status screen** covers the machine, the lock, jobs and the board. **Tidy** repairs stale state without losing data.
-- **A protected-data registry** keeps sources and self-contained goldens safe, and cleanup only ever archives.
-- **Agent rules, briefs and a handoff template** come with the method written in, plus two [Agent Skills](https://agentskills.io): one for the lead session, one for the workers.
+What makes that work isn't a fixed rule set. It is a small loop:
+- **An anchor:** a status file that is always true.
+- **A heartbeat:** a check-in on a regular beat that looks at usage, jobs and workers, then acts.
+- **Rules from corrections:** each correction becomes a dated rule the same day, and the rule it replaces is superseded.
+- **A decision boundary:** what the agent decides alone, and what needs you.
+- **Independent verification** of every result.
+
+The kit gives you that loop and the tools that grew out of running it:
+
+- **`coordinator checkin`**: the heartbeat. Usage from any provider, failed or stalled jobs, quiet workers, a status file that fell behind the commits.
+- **`coordinator rule add/retire`**: rules that evolve, with your words, the date and their history. Rendered into the agents' rules file along with the decision boundary and model policy from `coordinator.json`.
+- **Detached jobs** survive the agent that started them, and their completion markers can't lie. **Short blocking waits** keep agents cheap and still able to hear messages.
+- **A fair machine lock,** first come first served, with an exclusive mode for heavy work and a shared mode for tests. It is safe when a holder crashes.
+- **A lane board, one status screen, and tidy,** which repairs stale state without losing data.
+- **A protected-data registry:** cleanup only ever archives.
+- **Two [Agent Skills](https://agentskills.io):** one for the lead session, one for workers. Plus brief and handoff templates, and a list of lessons to adopt when their problem shows up.
 
 Standard-library Python 3.11+, no daemon, state in plain files. Linux, macOS and Windows.
 
-The method, and the failures behind each part of it, are in [the write-up](https://github.com/snehoza/coordinator-kit/blob/main/docs/WRITEUP.md).
+Why it works, with numbers from a three-month project, and the failures behind each tool, are in [the write-up](https://github.com/snehoza/coordinator-kit/blob/main/docs/WRITEUP.md).
 
 ## Install
 
@@ -86,17 +96,34 @@ with FairLock(label="benchmark", timeout=600):
     run_benchmark()
 ```
 
-## For agents
+## Set up the loop
 
-`coordinator init docs/agents` writes:
-- `AGENT_RULES.md`: the working rules, with placeholders for your project;
-- `briefs/`: lane round, research round, review/judging round and finish;
-- `HANDOFF.md`;
-- an `AGENTS.md` pointer;
-- an example `protected_data.json`.
+```sh
+coordinator init                      # coordinator.json + docs/agents/
+```
+
+`coordinator init` writes:
+- `coordinator.json`: settings as data:
+  - the status file;
+  - the heartbeat (beat, quiet-lane minutes, status drift);
+  - `usage_commands`;
+  - the decision `boundary` (`decide` and `ask`);
+  - `models` (roles, fallback order, checkpoint threshold).
+- `docs/agents/AGENT_RULES.md`: a short frame plus a generated block (decision boundary, models and budget, live rules). Point your `AGENTS.md` or `CLAUDE.md` at it.
+- `docs/agents/HEARTBEAT.md`: the check-in prompt. Schedule it with your harness's loop or cron.
+- `docs/agents/LESSONS.md`: rules from a real project, each tied to the symptom that calls for it. Adopt one when you see its symptom, not on day one.
+- `docs/agents/briefs/` (lane, research, review/judging, finish), `HANDOFF.md`, and an example `protected_data.json`.
+
+Then the coordinator records corrections as they come:
+
+```sh
+coordinator rule add "Wait in 3-minute blocking calls" --why "long waits left agents deaf for 10 min" --supersedes R4
+coordinator rule list --all
+coordinator checkin --quiet
+```
 
 The skills in [`skills/`](https://github.com/snehoza/coordinator-kit/tree/main/skills) follow the open Agent Skills format:
-- `coordinator` is for the lead session: plan lanes, brief, checkpoint, validate, merge.
+- `coordinator` is for the lead session: anchor, heartbeat, corrections, workers, verification.
 - `lane-agent` is for workers: jobs, waits, the lock, the board, handoffs.
 
 To install them, copy the folders into your agent's skills directory, e.g. `.claude/skills/` for Claude Code; other agents document where skills live. They need only a shell and Python. Every command is listed in [`COMMANDS.md`](https://github.com/snehoza/coordinator-kit/blob/main/skills/coordinator/references/COMMANDS.md).

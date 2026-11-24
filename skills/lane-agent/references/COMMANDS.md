@@ -1,8 +1,27 @@
 # coordinator command reference
 
-Global options go before the subcommand: `coordinator [--home DIR] [--out JOBS_DIR] <command> ...`.
-- `--home`: shared state (default `$COORDINATOR_HOME`, else `~/.coordinator`). Every agent on the machine must use the same one.
+Global options go before the subcommand: `coordinator [--home DIR] [--out JOBS_DIR] [--config FILE] <command> ...`.
+- `--home`: shared machine state (default `$COORDINATOR_HOME`, else `~/.coordinator`). Every agent on the machine must use the same one.
 - `--out`: jobs folder (default `<home>/jobs`).
+- `--config`: project settings (default: `coordinator.json` in the current folder or a parent).
+
+## The loop
+| Command | What it does |
+|---|---|
+| `coordinator init [ROOT] [--agents-dir docs/agents]` | Set up a project, never overwriting. Writes `coordinator.json` (settings as data) and, in the agents dir: `AGENT_RULES.md` (a short frame plus a generated block), `HEARTBEAT.md` (the check-in prompt), `LESSONS.md` (rules to adopt when their problem shows up), `HANDOFF.md`, an `AGENTS.md` pointer, an example `protected_data.json`, and `briefs/` (lane, research, review, finish). |
+| `coordinator checkin [--quiet] [--no-usage] [--json]` | The heartbeat. Shows usage from each `usage_commands` entry ("unavailable" if one fails, never zero), and jobs finished since the last check-in. Under NEEDS ATTENTION it lists failed or stalled jobs, lanes quiet longer than `silent_lane_minutes`, stale lanes, long lock waits, and a status file that missed the last `status_stale_commits` commits. `--quiet` prints one line when nothing needs attention. |
+| `coordinator rule add "TEXT" --why "WORDS" [--by user] [--section S] [--supersedes R3,R5]` | Record a rule with the user's words and the date, superseding older rules. Re-renders the rules. |
+| `coordinator rule retire R7 --why "REASON"` | Drop a rule that no longer serves the work. |
+| `coordinator rule list [--all] [--json]` | Live rules; `--all` adds the superseded and retired ones. |
+| `coordinator rule render` | Rewrite the generated block of `AGENT_RULES.md` (decision boundary, models and budget, live rules) and `RULES_HISTORY.md`. Text outside the markers is kept. |
+| `coordinator policy` | The settings in effect: `coordinator.json` merged with the defaults. |
+
+`coordinator.json` keys:
+- `agents_dir`, `status_file`;
+- `heartbeat`: `every_minutes`, `silent_lane_minutes`, `status_stale_commits`;
+- `usage_commands`: a list of commands, each a string or a list of arguments;
+- `boundary`: `decide` and `ask` lists;
+- `models`: `roles`, `fallback`, `checkpoint_usage_percent`, `relaunch_context_tokens`.
 
 ## Jobs
 | Command | What it does |
@@ -74,8 +93,3 @@ An entry is stale when it was last updated more than `--stale-hours` ago, its `-
 | `check` | Every source and golden exists, and every golden input exists inside its golden. Exits 1 on any problem. |
 | `scan ROOT [--json]` | Folders under ROOT with size, age and why each is protected. |
 | `archive PATH... --to DIR [--apply]` | Move unprotected folders into DIR. Each move is logged to `DIR/ARCHIVE_LOG.jsonl`. Refuses sources, goldens, their inputs and any folder that contains one. Dry run without `--apply`. |
-
-## Templates
-`coordinator init [DIR]` writes these into DIR (default `docs/agents`), never overwriting:
-- `AGENT_RULES.md`, `HANDOFF.md`, an `AGENTS.md` pointer and an example `protected_data.json`;
-- `briefs/` with `lane-round`, `research-round`, `review-round` and `finish`.

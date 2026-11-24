@@ -9,10 +9,11 @@ import time
 from importlib import resources
 from pathlib import Path
 
-from . import __version__, board, data, jobs, lock, status, tidy, wait
+from . import __version__, board, checkin, data, jobs, lock, rules, status, tidy, wait
+from .config import NAME as CONFIG_NAME, DEFAULT as CONFIG_DEFAULT, Config
 from .home import home, human_age, tail_lines
 
-TEMPLATES = ("AGENT_RULES.md", "HANDOFF.md", "AGENTS.md", "protected_data.json",
+TEMPLATES = ("AGENT_RULES.md", "HEARTBEAT.md", "LESSONS.md", "HANDOFF.md", "AGENTS.md", "protected_data.json",
              "briefs/README.md", "briefs/lane-round.md", "briefs/research-round.md", "briefs/review-round.md",
              "briefs/finish.md")
 
@@ -32,7 +33,17 @@ def _command(rest: list[str], parser) -> list[str]:
 # --- handlers -------------------------------------------------------------------------------------------
 
 def cmd_init(a) -> int:
-    target = Path(a.dir)
+    root = Path(a.root).resolve()
+    root.mkdir(parents=True, exist_ok=True)
+    cfg_path = root / CONFIG_NAME
+    if cfg_path.exists():
+        print(f"kept     {cfg_path} (exists)")
+    else:
+        cfg = dict(CONFIG_DEFAULT, agents_dir=a.agents_dir)
+        cfg_path.write_text(json.dumps(cfg, indent=2) + "\n", encoding="utf-8", newline="\n")
+        print(f"wrote    {cfg_path}")
+    cfg = Config(cfg_path)
+    target = cfg.agents_dir
     src = resources.files("coordinator_kit").joinpath("templates")
     for rel in TEMPLATES:
         dest = target / rel
@@ -42,7 +53,10 @@ def cmd_init(a) -> int:
         dest.parent.mkdir(parents=True, exist_ok=True)
         dest.write_text(src.joinpath(rel).read_text(encoding="utf-8"), encoding="utf-8", newline="\n")
         print(f"wrote    {dest}")
-    print("Next: fill in the {placeholders} in AGENT_RULES.md and point your agent instruction file at it (see AGENTS.md).")
+    rules.render(cfg)
+    print(f"rendered {target / 'AGENT_RULES.md'}")
+    print("Next: point your agent instruction file at AGENT_RULES.md (see AGENTS.md), set status_file and "
+          "usage_commands in coordinator.json, and schedule the check-in from HEARTBEAT.md.")
     return 0
 
 
@@ -169,6 +183,53 @@ def cmd_tidy(a) -> int:
     return 0
 
 
+def _cfg(a) -> Config:
+    return Config.load(a.config)
+
+
+def cmd_rule(a) -> int:
+    cfg = _cfg(a)
+    if a.rule_cmd == "add":
+        e = rules.add(cfg, a.text, a.why or "", a.by, a.section, [x.strip() for x in (a.supersedes or "").split(",") if x.strip()])
+        rules.render(cfg)
+        print(f"added {e['id']}" + (f", superseding {', '.join(e['supersedes'])}" if e["supersedes"] else "")
+              + f"; rendered {cfg.agents_dir / 'AGENT_RULES.md'}")
+        return 0
+    if a.rule_cmd == "retire":
+        rules.retire(cfg, a.id, a.why)
+        rules.render(cfg)
+        print(f"retired {a.id}; rendered")
+        return 0
+    if a.rule_cmd == "render":
+        paths = rules.render(cfg)
+        print("rendered " + ", ".join(map(str, paths)))
+        return 0
+    rows = [r for r in rules.state(cfg).values() if a.all or r["status"] == "live"]
+    if a.json:
+        _dump(rows)
+        return 0
+    for r in rows:
+        tag = "" if r["status"] == "live" else f" [{r['status']}]"
+        print(f"{r['id']}{tag} ({r['section']}, {r['by']} {r['date']}): {r['text']}")
+    if not rows:
+        print("no rules yet")
+    return 0
+
+
+def cmd_checkin(a) -> int:
+    cfg = _cfg(a)
+    d = checkin.collect(cfg, a.home, a.out, run_usage=not a.no_usage)
+    _dump(d) if a.json else print(checkin.render(d, quiet=a.quiet))
+    return 0
+
+
+def cmd_policy(a) -> int:
+    cfg = _cfg(a)
+    print(f"# {cfg.path or '(no coordinator.json found; defaults)'}")
+    _dump(cfg.data)
+    return 0
+
+
 def cmd_data(a) -> int:
     reg = data.Registry(a.registry)
     if a.data_cmd == "check":
@@ -205,11 +266,39 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--version", action="version", version=f"coordinator-kit {__version__}")
     p.add_argument("--home", help="shared state folder (default $COORDINATOR_HOME or ~/.coordinator)")
     p.add_argument("--out", help="jobs folder (default <home>/jobs)")
+    p.add_argument("--config", help="project settings (default: coordinator.json in this folder or a parent)")
     sub = p.add_subparsers(dest="cmd", required=True)
 
-    s = sub.add_parser("init", help="write the agent rules, brief and handoff templates into a folder")
-    s.add_argument("dir", nargs="?", default="docs/agents")
+    s = sub.add_parser("init", help="set up a project: coordinator.json, agent rules, heartbeat, lessons, briefs, handoff")
+    s.add_argument("root", nargs="?", default=".", help="project root (default: here)")
+    s.add_argument("--agents-dir", default="docs/agents")
     s.set_defaults(func=cmd_init)
+
+    r = sub.add_parser("rule", help="rules that evolve: add, retire, list, render")
+    rs = r.add_subparsers(dest="rule_cmd", required=True)
+    ra = rs.add_parser("add", help='coordinator rule add "rule" --why "what the user said" [--supersedes R3]')
+    ra.add_argument("text")
+    ra.add_argument("--why", help="the user's words (or the incident) behind it")
+    ra.add_argument("--by", default="user")
+    ra.add_argument("--section", default="General")
+    ra.add_argument("--supersedes", help="comma-separated rule ids this replaces")
+    rr = rs.add_parser("retire", help="drop a rule that no longer serves the work")
+    rr.add_argument("id")
+    rr.add_argument("--why", required=True)
+    rl = rs.add_parser("list")
+    rl.add_argument("--all", action="store_true", help="include superseded and retired rules")
+    rl.add_argument("--json", action="store_true")
+    rs.add_parser("render", help="rewrite the generated block of AGENT_RULES.md and RULES_HISTORY.md")
+    r.set_defaults(func=cmd_rule)
+
+    c = sub.add_parser("checkin", help="the heartbeat: usage, finished/failed jobs, quiet lanes, status-file drift")
+    c.add_argument("--quiet", action="store_true", help="one line when nothing needs attention")
+    c.add_argument("--no-usage", action="store_true", help="skip the usage commands")
+    c.add_argument("--json", action="store_true")
+    c.set_defaults(func=cmd_checkin)
+
+    pol = sub.add_parser("policy", help="show the project settings in effect (coordinator.json merged with defaults)")
+    pol.set_defaults(func=cmd_policy)
 
     j = sub.add_parser("jobs", help="detached jobs with completion markers")
     js = j.add_subparsers(dest="jobs_cmd", required=True)

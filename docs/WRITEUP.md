@@ -1,13 +1,63 @@
-# Running a team of coding agents on one machine
+# The rules are what a loop leaves behind
 
-For about a month I ran a project with one lead agent session and a rotating set of worker agents. Several worked at once, each in its own git worktree, on one workstation:
+For about three months I built a project with a lead coding agent that ran around the clock and a rotating set of worker agents, each in its own git worktree, on one workstation:
 - a 6 GB laptop GPU;
 - a Linux VM with about 7.6 GB of RAM;
 - several model accounts, each with its own usage window.
 
 The work was a heavy GPU pipeline: model inference, rendering, long regression gates and careful timing runs.
 
-Writing code was not the hard part. Sharing one machine was: agents killed each other's measurements, waited on locks that never came free, burned their budgets polling, and trusted results that came from the wrong checkout. Each failure below happened at least once. Each fix is now a command in `coordinator-kit` or a line in its agent rules.
+The lead agent ran for days at a time, unattended between my messages. It:
+- recovered from stalls;
+- planned around the usage left on each account;
+- launched, checkpointed and replaced workers;
+- verified their results;
+- merged clean work;
+- stopped only when the work was done or genuinely needed me.
+
+It did not drift. This post is about why. My first guess was "good rules", and the history says otherwise.
+
+## Part 1: the loop
+
+| From the project's history | Count |
+|---|---|
+| Commits | 2,484 |
+| Commits that also updated the status file | 1,183, nearly half |
+| Rewrites of the agent rules | 51, plus 26 of the instruction file and 23 of the brief templates |
+| Dated quotes of my words inside the rules | 29, from 12 different days |
+| Notes recording my corrections | 64, about 58 mentions of a rule being superseded |
+| Small tools written along the way | 115 |
+| Worker agents launched | 1,443, from 1 to 140 a day, across 15 different models |
+
+The rules were never stable, and most of the important ones were reversed at least once:
+- "never darken" became "follow the physics";
+- a strict test-set-only rule became "use any input, say which";
+- a scheduler was built and dropped the next day;
+- a memory setting was raised and reverted;
+- a model provider was banned and another became the fallback;
+- the context size at which workers are relaunched moved from 200k to 350k tokens;
+- one model family was retired from judging;
+- "don't over-test" arrived;
+- and eventually a rule about the rules: they serve the work, and one that would cause a regression is flagged, not followed.
+
+A fixed rule set would have been wrong within a week. What held still was a small loop:
+
+1. **An anchor that is always true.** One status file says what is done, what is running and what waits on me. It is updated in the same commit as the work it describes, which is why it changed in nearly half of all commits. Every resume and every check-in starts by reading it, so a wrong belief can't survive long.
+2. **A heartbeat.** Every 30 minutes a scheduled check-in looks at the same few things: usage left on each account, finished and failed jobs, quiet workers, and whether the status file is still true. Then it acts. Most check-ins are one line: nothing changed. This is what "autonomous" means in practice. It isn't a long plan executed blindly; it's a short look, repeated.
+3. **Corrections become rules the same day,** in my words, with the date and the reason. The rule they replace is superseded in place, so two rules never contradict. Changing a rule is cheap, so rules stay right instead of just staying put.
+4. **A clear decision boundary.** The agent decides technical matters: design, tools, tests, which worker does what, which model, how many. It asks me only about push, deploy, deleting anything and changes users can see. That line is what makes unattended work safe: drift can't reach anything expensive without passing me.
+5. **Checking is separate from building.** Receipts from the right checkout, a reviewer who didn't write the code, blind judges with controls. An autonomous system without this drifts into confident nonsense.
+6. **Resources are chosen as the work goes.** Which model, how many workers, how much effort: decided per task, from the usage left. The strongest model does design and debugging, the cheapest one that can do the job does the rest, and the fallback order changed several times as accounts and providers changed.
+7. **A problem that repeats becomes a tool or a rule.** Everything in Part 2 started as a failure that happened at least once.
+
+The same shape turned up in the always-on personal agents that shipped in autumn 2026: OpenAI's dots, Anthropic's Claude Duet, xAI's Grok Bot and Meta's Muse. Each gives an agent its own computer, memory carried across sessions, and periodic check-ins instead of a live stream; Duet briefs you in the morning, then stays quiet until something needs you. Each also asks for approval before sensitive actions, and Grok Bot can run several bots that split the work. For coding, three things matter that those products don't advertise:
+- **The state lives in git,** so every rule change is auditable.
+- **The path from a correction to a rule is explicit.**
+- **Every claimed result has to pass an evidence gate** before it counts.
+
+## Part 2: what the loop produced
+
+Writing code was not the hard part. Sharing one machine was: agents killed each other's measurements, waited on locks that never came free, burned their budgets polling, and trusted results that came from the wrong checkout. Each failure below happened at least once. Each fix is now a command in `coordinator-kit`, or a lesson you can adopt when its problem shows up.
 
 ## 1. Jobs died with the agent
 
@@ -130,14 +180,15 @@ The fixes:
 
 | Command | Problem it solves |
 |---|---|
+| `coordinator checkin` | The heartbeat: usage, failed jobs, quiet lanes, status-file drift (Part 1) |
+| `coordinator rule add / retire / render` | Rules that change with the user, with dates, quotes and history (Part 1) |
+| `coordinator.json`, `coordinator policy` | The decision boundary, models and budget, as data (Part 1) |
 | `coordinator jobs launch / status / log / stop` | Jobs that survive the agent, with markers that can't lie (§1, §2) |
 | `coordinator wait` | Short blocking waits (§2) |
 | `coordinator lock run [--shared]` | A fair, crash-safe machine lock (§3, §4) |
-| `coordinator board` | Who is doing what. Information only (§7) |
-| `coordinator status` | Machine, lock, jobs and board on one screen |
-| `coordinator tidy` | Stale state found and repaired without data loss |
+| `coordinator board`, `status`, `tidy` | Who is doing what; one screen; stale state repaired without data loss |
 | `coordinator data` | Protected sources, self-contained goldens, archive-only cleanup (§6) |
-| `coordinator init` | Agent rules, briefs and a handoff template with all of the above written in (§5, §7, §8, §9) |
-| `skills/coordinator`, `skills/lane-agent` | The same method as Agent Skills, for the lead and for the workers |
+| `coordinator init` | The rules frame, heartbeat prompt, lessons, briefs and handoff template |
+| `skills/coordinator`, `skills/lane-agent` | The method as Agent Skills, for the lead and for the workers |
 
-The tools are small: standard-library Python, no daemon, state in plain files under `~/.coordinator`. Most of the value is in the rules. Every one of them is there because the problem it prevents happened.
+The tools are small: standard-library Python, no daemon, state in plain files. They aren't the point. The kit starts you with almost no rules, a heartbeat and a way to record corrections, and lets your own rules grow from the way you work.

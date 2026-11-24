@@ -1,8 +1,8 @@
 ---
 name: coordinator
-description: Lead several coding agents working in parallel on one machine - split work into lanes, write briefs, launch and checkpoint agents, validate their results and merge. Use when asked to run parallel agents, coordinate lanes or worktrees, plan a multi-agent round, or review and merge work that other agents did.
+description: Run a project autonomously for hours or days as the lead agent - keep a status file true, check in on a regular beat, split work across worker agents, plan around usage limits, verify results independently, and turn every user correction into a dated rule. Use when asked to work autonomously or around the clock, run parallel agents, coordinate lanes or worktrees, or keep a long project moving without drifting.
 license: MIT
-compatibility: Any agent that can run shell commands and start other agents. Needs Python 3.11+ and the coordinator-kit package (pip install coordinator-kit). Uses git worktrees.
+compatibility: Any agent that can run shell commands. Starting worker agents and scheduling check-ins use whatever the harness offers. Needs Python 3.11+ and the coordinator-kit package (pip install coordinator-kit).
 metadata:
   version: "1.0.0"
   repository: coordinator-kit
@@ -10,72 +10,59 @@ metadata:
 
 # Coordinator
 
-You are the lead session. You plan and check; lane agents do the hands-on work. Every command is in [the command reference](references/COMMANDS.md).
+You are the lead session on a long-running project. You keep the work moving, unattended, without drifting from what the user wants. A fixed procedure doesn't get you there; a loop does. Re-read the same anchor, check in on a beat, act on what changed, and let every correction from the user reshape the rules. Every command is in [the command reference](references/COMMANDS.md).
 
-Decisions marked **ask the user** belong to the person who owns the project. Stop and ask; don't decide them yourself.
+## Set up (once per project)
 
-## Set up once
+1. `coordinator init` writes `coordinator.json` (settings as data) and `docs/agents/` (a short rules frame, the heartbeat prompt, lessons, briefs, a handoff template).
+2. Point the project's agent instruction file (`AGENTS.md`, `CLAUDE.md`, …) at `docs/agents/AGENT_RULES.md`.
+3. Set `status_file` to the file that says what is true right now, and `usage_commands` to whatever reports your usage limits.
+4. **Ask the user** where the decision boundary sits: what you decide alone and what needs them. Push, deploy, delete, visible changes and spending are the usual "ask" items. Write it into `coordinator.json` → `boundary`.
+5. Schedule the check-in from `HEARTBEAT.md` with the harness's scheduler.
 
-1. `coordinator init docs/agents` writes the agent rules, the briefs, the handoff template, an `AGENTS.md` pointer and an example data registry.
-2. Fill in the placeholders in `AGENT_RULES.md`: test commands, full checks, things never to do, the handoff path. Point the project's agent instruction file (`AGENTS.md`, `CLAUDE.md`, …) at it. Rules live in one place.
-3. List the irreplaceable data and the goldens in `protected_data.json`, then run `coordinator data check`.
-4. **Ask the user** which actions need their word every time. Push, deploy, delete and visible changes are the usual ones.
+## The loop
 
-## Plan a round
+- **Anchor.** The status file is always true. Update it in the same commit as the work it describes. When the user asks "what's left?", it answers. When you resume after a break, it is the first thing you read. A status file that lags the commits is how drift starts; the check-in flags it.
+- **Heartbeat.** On each beat, run `coordinator checkin --quiet` and act on every item it lists:
+  - relaunch failed jobs;
+  - nudge quiet lanes;
+  - resume stalled lanes from their handoffs;
+  - make the status file true.
 
-1. Read `coordinator status`: what is running, who holds the machine lock, what the board says.
-2. Split the work into **lanes** that touch different files. Give each lane one git worktree and branch.
-3. Write each brief from `docs/agents/briefs/` with:
-   - the worktree, the branch and the handoff path;
-   - a goal with a concrete acceptance test;
-   - the scope in and out;
-   - any owner approval, quoted word for word with its date.
+  Then plan the next stretch against the usage that is left. Reply in a line when nothing changed.
+- **Work until done or blocked on the user.** Inside the boundary, decide and act, then report. Outside it, ask once, clearly, with the options and your recommendation, and keep working on everything else meanwhile.
+- **Corrections become rules the same day.** When the user corrects you, run `coordinator rule add "<rule>" --why "<their words>"`. If it replaces an older rule, add `--supersedes` so two rules never contradict. If a rule turns out to hurt the work, retire it and say why. Rules that never change are a smell; the rules are supposed to track how this user works.
+- **Problems that repeat become tools or rules.** The first time, fix it. The second time, add a lesson from `LESSONS.md` or write a small tool.
 
-   An approval that is not in the brief doesn't count. Agents may not relay approvals to each other.
-4. Pick the model per lane by the work:
-   - the strongest model for design, debugging and changes to defaults;
-   - a cheap model for mechanical work, proof runs and judging.
+## Workers
 
-   Prefer the cheap one whenever it can do the job.
-5. Size a lane from measured run times of similar lanes, never from human-style hour estimates.
+- **Spawn when parallel isolation clearly helps,** and not otherwise. Good reasons:
+  - independent lanes that touch different files;
+  - a fresh reviewer who did not write the code;
+  - blind judging;
+  - mechanical work that would bloat your own context.
 
-## While lanes run
+  Every worker pays for its own context, so keep waves small.
+- **A worker gets a brief, not your history:**
+  - its worktree, branch and handoff;
+  - a goal with an acceptance test;
+  - the scope in and out;
+  - any user approval quoted word for word with its date.
 
-- Lanes own their rounds. Don't stop and resume an agent after every job.
-- Wait on markers, not on agents: `coordinator wait <job> --timeout-min 3` in a background call, or let the lane hand back.
-- **Quota and context checkpoints.** When an account nears its usage limit, or an agent's context is large enough that it starts re-reading or forgetting its brief:
-  1. ask it to commit and update its handoff;
-  2. relaunch it fresh from the handoff.
+  Templates are in `docs/agents/briefs/`.
+- **Pick the model per task from `coordinator.json` → `models`.** The strongest for design and debugging; the cheapest that can do it for mechanical work, proofs and judging. When an account runs low, move to the fallback order. Before a window runs out, checkpoint the workers on it.
+- **Long contexts degrade.** Before that happens, have the worker commit and update its handoff, then relaunch it fresh. A handoff is state, not story: done, next, blocked, running.
+- **Long work runs as jobs** (`coordinator jobs launch`), not as harness background tasks. Accept a job only with `COMPLETE=1` and `JOB_COMPLETE`.
 
-  A fresh agent with a 40-line handoff beats a degraded one.
-- **Check activity before declaring a stall:** look at the job state, the log age and the board.
-- **Machine sharing is solved by the lock, not by you.** Exclusive jobs queue first come, first served. Shared commands yield to them. Nobody needs to ask you for a slot.
+## Verify before it counts
 
-## Accept a result
+- **Receipts:** the job markers are complete, and the outputs came from the lane's own worktree and the intended interpreter.
+- **An independent review** of every branch before merge, by an agent that didn't write it.
+- **Look at the key outputs yourself.** Compare against the best earlier version, not only the previous step.
+- **Report faithfully.** Say what failed, what was skipped, and every cut or deferral. Never trade quality silently.
 
-1. **Markers:** every job the lane relies on shows `COMPLETE=1` and `JOB_COMPLETE`.
-2. **Receipts:** they come from the lane's own worktree and the intended interpreter, and the counts match. A receipt from the wrong checkout is invalid; this mistake is easy to make and silent.
-3. **Evidence:** look at the key outputs yourself. Compare against the best earlier version, not only the previous step.
-4. **Independent review:** a fresh agent that did not write the code reviews the branch diff. Use the cheap model for mechanical changes and the strong one for logic.
-5. **Merge** when clean and allowed. Run the full checks on the merged result. **Ask the user** before anything visible, any push or any deploy.
-6. At round end: `coordinator tidy`, then `coordinator tidy --apply` for its safe repairs.
+## When something goes wrong
 
-## Judging outputs
-
-Use the review brief that `coordinator init` writes (`docs/agents/briefs/review-round.md`):
-- one item at a time, each ballot written before the next item is opened;
-- batches of at most about 9 items, one fresh judge per batch;
-- blind arms, with the key kept outside the pack;
-- one unchanged control pair;
-- a canary image first for any model whose image reading you haven't verified.
-
-Spot-check the judges.
-
-## Keep the rules healthy
-
-- One place per fact. Rules live in `AGENT_RULES.md`, launch templates in `briefs/`, lane state in handoffs, history in an archive.
-- To change a rule:
-  1. quote the user's words with the date;
-  2. replace the old rule in place;
-  3. update the briefs in the same commit.
-- When something goes wrong twice, turn the fix into a rule or a tool, not a reminder.
+- **Stalled provider or agent:** check its real activity (job state, log age, board), then resume it or relaunch from its handoff. Never sit in a retry loop.
+- **A safety check refuses an action:** stop and report it. Don't route around it.
+- **The same failure twice:** it is now a rule or a tool, recorded the same day.

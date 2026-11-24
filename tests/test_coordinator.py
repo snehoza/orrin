@@ -7,7 +7,8 @@ import time
 import unittest
 from pathlib import Path
 
-from coordinator_kit import board, cli, data, jobs, lock, procs, tidy, wait
+from coordinator_kit import board, checkin, cli, data, jobs, lock, procs, rules, tidy, wait
+from coordinator_kit.config import Config
 
 PY = sys.executable
 ROOT = Path(__file__).resolve().parents[1]
@@ -266,14 +267,105 @@ class CliTests(Home):
         self.assertIn("would fix", self.run_cli("tidy").stdout)
 
     def test_init_writes_every_template_once(self):
-        target = Path(self._tmp.name) / "agents"
-        self.assertEqual(cli.main(["init", str(target)]), 0)
+        root = Path(self._tmp.name) / "proj"
+        self.assertEqual(cli.main(["init", str(root)]), 0)
+        target = root / "docs" / "agents"
         for rel in cli.TEMPLATES:
             self.assertTrue((target / rel).is_file(), rel)
-        (target / "AGENT_RULES.md").write_text("mine")
-        cli.main(["init", str(target)])
-        self.assertEqual((target / "AGENT_RULES.md").read_text(), "mine")
+        self.assertTrue((root / "coordinator.json").is_file())
+        rules_text = (target / "AGENT_RULES.md").read_text()
+        self.assertIn("## Decision boundary", rules_text)
+        self.assertIn("None yet", rules_text)
+        (target / "HANDOFF.md").write_text("mine")
+        cli.main(["init", str(root)])
+        self.assertEqual((target / "HANDOFF.md").read_text(), "mine")
         json.loads((target / "protected_data.json").read_text())
+
+
+class RuleTests(unittest.TestCase):
+    def setUp(self):
+        self._tmp = tempfile.TemporaryDirectory()
+        self.root = Path(self._tmp.name)
+        (self.root / "coordinator.json").write_text(json.dumps({"models": {"fallback": ["a", "b"]}}))
+        self.cfg = Config.load(self.root / "coordinator.json")
+
+    def tearDown(self):
+        self._tmp.cleanup()
+
+    def test_add_supersede_retire_render(self):
+        r1 = rules.add(self.cfg, "Never dim the floor.", "no darker floors", section="Quality", date="2026-10-01")
+        r2 = rules.add(self.cfg, "Wait 10 minutes per call.", date="2026-10-02")
+        r3 = rules.add(self.cfg, "Follow real-life lighting.", "the old rule is dumb", supersedes=[r1["id"]],
+                       section="Quality", date="2026-10-21")
+        rules.retire(self.cfg, r2["id"], "agents went deaf", date="2026-10-29")
+        st = rules.state(self.cfg)
+        self.assertEqual(st["R1"]["status"], "superseded")
+        self.assertEqual(st["R1"]["superseded_by"], "R3")
+        self.assertEqual(st["R1"]["by"], "user")
+        self.assertEqual((st["R2"]["status"], st["R3"]["status"]), ("retired", "live"))
+        target, history = rules.render(self.cfg)
+        text = target.read_text()
+        self.assertIn('Follow real-life lighting. (R3; user 2026-10-21: "the old rule is dumb")', text)
+        self.assertNotIn("Never dim", text)
+        self.assertIn("a -> b", text)
+        h = history.read_text()
+        self.assertIn("superseded by R3", h)
+        self.assertIn("retired: agents went deaf", h)
+        # rendering twice is stable and keeps hand-written text outside the markers
+        target.write_text("# Mine\nhand text\n" + text[text.index(rules.BEGIN):] + "\nafter\n")
+        rules.render(self.cfg)
+        again = target.read_text()
+        self.assertTrue(again.startswith("# Mine\nhand text\n"))
+        self.assertTrue(again.rstrip().endswith("after"))
+        self.assertEqual(again.count(rules.BEGIN), 1)
+        with self.assertRaises(ValueError):
+            rules.add(self.cfg, "x", supersedes=["R99"])
+        with self.assertRaises(ValueError):
+            rules.retire(self.cfg, "R1", "already superseded")
+
+
+class CheckinTests(Home):
+    def test_flags_failures_quiet_lanes_and_status_drift(self):
+        proj = Path(self._tmp.name) / "proj"
+        proj.mkdir()
+        (proj / "coordinator.json").write_text(json.dumps({
+            "heartbeat": {"status_stale_commits": 2, "silent_lane_minutes": 1},
+            "usage_commands": [[PY, "-c", "print('5h 40% used')"], ["definitely-not-a-command-xyz"]]}))
+        git = lambda *a: subprocess.run(["git", "-C", str(proj), "-c", "user.name=t", "-c", "user.email=t@t", *a],
+                                        capture_output=True, check=True)
+        git("init", "-q")
+        (proj / "TODO.md").write_text("status")
+        git("add", "-A")
+        git("commit", "-q", "-m", "status")
+        for i in range(2):
+            (proj / f"f{i}").write_text(str(i))
+            git("add", "-A")
+            git("commit", "-q", "-m", f"work {i}")
+        cfg = Config.load(proj / "coordinator.json")
+        jobs.launch("broke", [PY, "-c", "import sys; sys.exit(2)"], root=self.home, lock="none")
+        wait.wait([jobs.resolve("broke", root=self.home)], 30, 0.1)
+        board.update("alpha", {"activity": "x"}, root=self.home)
+        row = json.loads((board.board_dir(self.home) / "alpha.json").read_text())
+        row["updated"] -= 600
+        (board.board_dir(self.home) / "alpha.json").write_text(json.dumps(row))
+        d = checkin.collect(cfg, self.home)
+        text = "\n".join(d["attention"])
+        self.assertIn("job broke failed", text)
+        self.assertIn("lane alpha quiet", text)
+        self.assertIn("not updated in the last 2 commits", text)
+        self.assertTrue(d["usage"][0]["ok"])
+        self.assertIn("40% used", d["usage"][0]["lines"][0])
+        self.assertFalse(d["usage"][1]["ok"])
+        # the next check-in no longer reports the same finished job
+        d2 = checkin.collect(cfg, self.home, run_usage=False)
+        self.assertFalse(any("broke" in a for a in d2["attention"]))
+        board.update("alpha", {"activity": "y"}, root=self.home)
+        (proj / "TODO.md").write_text("status 2")
+        git("add", "-A")
+        git("commit", "-q", "-m", "status")
+        d3 = checkin.collect(cfg, self.home, run_usage=False)
+        self.assertEqual(d3["attention"], [])
+        self.assertIn("nothing needs attention", checkin.render(d3, quiet=True))
 
 
 if __name__ == "__main__":
