@@ -1,0 +1,26 @@
+{
+  "comment": "Data that must never be removed by hand. Paths are relative to this file unless absolute. kind: source (irreplaceable), golden (self-contained reference outputs; list their inputs), cache (rebuildable; may be archived). Check with: coordinator data --registry protected_data.json check",
+  "entries": [
+    {
+      "id": "raw-dataset",
+      "path": "data/raw",
+      "kind": "source",
+      "why": "the only copy of the recorded inputs"
+    },
+    {
+      "id": "golden-outputs-v1",
+      "path": "goldens/v1",
+      "kind": "golden",
+      "inputs": ["goldens/v1/inputs"],
+      "why": "regression reference; tests compare against it",
+      "rebuild": "python tools/build_golden.py --out goldens/v2 (new goldens get a new folder)"
+    },
+    {
+      "id": "derived-cache",
+      "path": "cache",
+      "kind": "cache",
+      "why": "rebuildable intermediate outputs",
+      "rebuild": "python tools/fill_cache.py"
+    }
+  ]
+}
