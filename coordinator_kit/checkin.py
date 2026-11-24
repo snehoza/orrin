@@ -26,7 +26,9 @@ import re
 import subprocess
 import time
 
-from . import board, jobs, lock, procs, tasks
+import json
+
+from . import board, jobs, lead, lock, procs, settled, tasks
 from .config import Config
 from .home import home, human_age, read_json, write_json
 
@@ -68,6 +70,72 @@ def _anchor(cfg: Config) -> dict:
         count = _git(cfg, "rev-list", "--count", f"{last}..HEAD")
         info["commits_since"] = int(count) if count and count.isdigit() else None
     return info
+
+
+def _commits_since(cfg: Config, path) -> int | None:
+    try:
+        rel = path.resolve().relative_to(cfg.root).as_posix()
+    except ValueError:
+        return None
+    last = _git(cfg, "log", "-1", "--format=%H", "--", rel)
+    if not last:
+        return None
+    count = _git(cfg, "rev-list", "--count", f"{last}..HEAD")
+    return int(count) if count and count.isdigit() else None
+
+
+def _epoch(value) -> float | None:
+    if value is None:
+        return None
+    if isinstance(value, (int, float)):
+        return float(value)
+    try:
+        from datetime import datetime
+        return datetime.fromisoformat(str(value).replace("Z", "+00:00")).timestamp()
+    except ValueError:
+        return None
+
+
+def _agents(cfg: Config, timeout: float = 30) -> tuple[list[dict] | None, str | None]:
+    cmd = cfg.data.get("agents_command")
+    if not cmd:
+        return None, None
+    try:
+        r = subprocess.run(cmd, shell=isinstance(cmd, str), capture_output=True, text=True, timeout=timeout,
+                           cwd=cfg.root, creationflags=NO_WINDOW)
+    except (OSError, subprocess.SubprocessError) as e:
+        return None, f"agents command unavailable: {e}"
+    text = r.stdout.strip()
+    try:
+        rows = json.loads(text) if text.startswith("[") else [json.loads(x) for x in text.splitlines() if x.strip()]
+    except ValueError:
+        return None, "agents command printed something that is not JSON"
+    return [x for x in rows if isinstance(x, dict)], None
+
+
+def _agent_attention(cfg: Config, rows: list[dict], now: float) -> list[str]:
+    hb, m = cfg["heartbeat"], cfg["models"]
+    out = []
+    active = [a for a in rows if str(a.get("state", "running")).lower() not in ("idle", "done", "stopped", "finished")]
+    for a in active:
+        name = a.get("name", "?")
+        updated = _epoch(a.get("updated"))
+        if updated and now - updated > hb["silent_lane_minutes"] * 60:
+            out.append(f"agent {name} quiet for {human_age(now - updated)}: check that it is working; nudge or resume it")
+        ctx, limit = a.get("context_tokens"), m.get("relaunch_context_tokens")
+        if ctx and limit and ctx >= limit:
+            out.append(f"agent {name} at {ctx:,} tokens of context (limit {limit:,}): checkpoint and relaunch it fresh")
+    if m.get("one_strong_per_account") and m.get("strong"):
+        per: dict[str, list[str]] = {}
+        for a in active:
+            model = str(a.get("model", ""))
+            if any(s in model for s in m["strong"]):
+                per.setdefault(str(a.get("account", "?")), []).append(a.get("name", "?"))
+        for account, names in per.items():
+            if len(names) > 1:
+                out.append(f"{len(names)} strong-model agents on account {account} ({', '.join(names)}): "
+                           "move one to another account or to the cheaper model")
+    return out
 
 
 def _mark_path(cfg: Config, root):
@@ -127,12 +195,33 @@ def collect(cfg: Config, root=None, jobs_out=None, run_usage: bool = True) -> di
         attention.append(f"status file {anchor['file']} missing: create it; every check-in re-reads it")
     elif (anchor["commits_since"] or 0) >= hb["status_stale_commits"]:
         attention.append(f"status file not updated in the last {anchor['commits_since']} commits: make it true again")
+    handoff = lead.handoff_path(cfg)
+    if not handoff.exists():
+        attention.append(f"lead handoff {handoff} missing: write it (what runs, what waits on the user, next step) "
+                         "so a resume after compaction starts from state, not memory")
+    else:
+        behind = _commits_since(cfg, handoff)
+        if behind is not None and behind >= hb["status_stale_commits"]:
+            attention.append(f"lead handoff not updated in the last {behind} commits: bring it up to date")
+    agents, agents_error = _agents(cfg)
+    if agents_error:
+        attention.append(agents_error)
+    if agents:
+        attention += _agent_attention(cfg, agents, now)
     task_summary = tasks.summary(cfg) if tasks.path(cfg).exists() else None
+    if task_summary:
+        for t in task_summary["ready"] + task_summary["claimed"]:
+            hit = settled.matches(cfg, t["title"])
+            if hit:
+                attention.append(f"task {t['id']} ({t['title'][:50]}) looks like settled {hit[0]['id']} "
+                                 f"[{hit[0]['verdict']}]: {hit[0]['result'][:80]}. Skip it, or reopen the settled item "
+                                 "and say what changed")
     if task_summary and not running and not task_summary["claimed"] and task_summary["ready"]:
         attention.append(f"{len(task_summary['ready'])} ready task(s) and nothing running: start "
                          f"{task_summary['ready'][0]['id']} ({task_summary['ready'][0]['title'][:60]})")
     data = {"time": now, "last_checkin": last or None, "usage": usage, "finished": finished_ok,
             "running": running, "attention": attention, "anchor": anchor, "lanes": len(lanes),
+            "agents": agents,
             "tasks": task_summary}
     write_json(mark_path, {"time": now, "project": str(cfg.root)})
     return data

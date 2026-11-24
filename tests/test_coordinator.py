@@ -7,7 +7,7 @@ import time
 import unittest
 from pathlib import Path
 
-from coordinator_kit import board, checkin, cli, data, jobs, lock, procs, rules, tasks, tidy, wait
+from coordinator_kit import board, checkin, cli, data, jobs, lead, lock, procs, rules, settled, tasks, tidy, wait
 from coordinator_kit.config import Config
 
 PY = sys.executable
@@ -335,6 +335,8 @@ class CheckinTests(Home):
                                         capture_output=True, check=True)
         git("init", "-q")
         (proj / "TODO.md").write_text("status")
+        (proj / "docs" / "agents").mkdir(parents=True)
+        (proj / "docs" / "agents" / "LEAD_HANDOFF.md").write_text("lead state")
         git("add", "-A")
         git("commit", "-q", "-m", "status")
         for i in range(2):
@@ -362,6 +364,7 @@ class CheckinTests(Home):
         jobs.ack(jobs.resolve("broke", root=self.home))
         board.update("alpha", {"activity": "y"}, root=self.home)
         (proj / "TODO.md").write_text("status 2")
+        (proj / "docs" / "agents" / "LEAD_HANDOFF.md").write_text("lead state 2")
         git("add", "-A")
         git("commit", "-q", "-m", "status")
         d3 = checkin.collect(cfg, self.home, run_usage=False)
@@ -442,6 +445,80 @@ class HeartbeatDetailTests(Home):
         jobs.ack(jobs.resolve("broke", root=self.home), "fixed the import")
         third = "\n".join(checkin.collect(self.cfg, self.home, run_usage=False)["attention"])
         self.assertNotIn("broke", third)
+        self.assertIn("lead handoff", third)  # missing in this project
+
+    def test_agents_from_the_harness(self):
+        now = time.time()
+        agents = [
+            {"name": "a1", "state": "running", "updated": now - 3600, "context_tokens": 400000, "model": "sol-x", "account": "nova"},
+            {"name": "a2", "state": "running", "updated": now, "context_tokens": 1000, "model": "sol-y", "account": "nova"},
+            {"name": "a3", "state": "idle", "updated": now - 99999, "model": "sol-z", "account": "nova"},
+        ]
+        script = self.proj / "agents.py"
+        script.write_text("import json\nprint(json.dumps(" + repr(agents) + "))\n")
+        (self.proj / "coordinator.json").write_text(json.dumps({
+            "heartbeat": {"silent_lane_minutes": 45}, "agents_command": [PY, str(script)],
+            "models": {"relaunch_context_tokens": 350000, "strong": ["sol"], "one_strong_per_account": True}}))
+        cfg = Config.load(self.proj / "coordinator.json")
+        text = "\n".join(checkin.collect(cfg, self.home, run_usage=False)["attention"])
+        self.assertIn("agent a1 quiet", text)
+        self.assertIn("agent a1 at 400,000 tokens", text)
+        self.assertNotIn("agent a2 quiet", text)
+        self.assertNotIn("a3", text.replace("a1, a2", ""))  # idle agents are not chased
+        self.assertIn("2 strong-model agents on account nova", text)
+
+
+class MemoryLayerTests(unittest.TestCase):
+    def setUp(self):
+        self._tmp = tempfile.TemporaryDirectory()
+        self.root = Path(self._tmp.name)
+        (self.root / "coordinator.json").write_text("{}")
+        self.cfg = Config.load(self.root / "coordinator.json")
+
+    def tearDown(self):
+        self._tmp.cleanup()
+
+    def test_rules_for_the_coordinator_go_to_their_own_file(self):
+        rules.add(self.cfg, "Reply in 1-3 lines at check-ins.", "one line if nothing changed", audience="coordinator",
+                  section="Replies")
+        rules.add(self.cfg, "Wait in 3-minute calls.", "agents went deaf")
+        rules.render(self.cfg)
+        agent_text = (self.cfg.agents_dir / "AGENT_RULES.md").read_text()
+        user_text = (self.cfg.agents_dir / "WORKING_WITH_USER.md").read_text()
+        self.assertIn("Wait in 3-minute calls", agent_text)
+        self.assertNotIn("Reply in 1-3 lines", agent_text)
+        self.assertIn("## Replies", user_text)
+        self.assertIn('Reply in 1-3 lines at check-ins. (R1; user', user_text)
+        with self.assertRaises(ValueError):
+            rules.add(self.cfg, "x", audience="everyone")
+
+    def test_settled_items_match_and_flag_tasks(self):
+        s = settled.add(self.cfg, "Cache the parsed config across requests", "0.4 s saved per 300 MiB: below the bar",
+                        evidence="ledger round 12")
+        self.assertEqual(settled.matches(self.cfg, "cache parsed config across requests")[0]["id"], s["id"])
+        self.assertEqual(settled.matches(self.cfg, "rewrite the image decoder"), [])
+        self.assertIn("0.4 s saved", (self.cfg.agents_dir / "SETTLED.md").read_text())
+        tasks.add(self.cfg, "Cache parsed config across requests")
+        home = self.root / "home"
+        text = "\n".join(checkin.collect(self.cfg, home, run_usage=False)["attention"])
+        self.assertIn(f"looks like settled {s['id']}", text)
+        settled.reopen(self.cfg, s["id"], "requests are 10x more frequent now")
+        self.assertEqual(settled.matches(self.cfg, "cache parsed config across requests"), [])
+        self.assertIn("reopened", (self.cfg.agents_dir / "SETTLED.md").read_text())
+
+    def test_heartbeat_prompt_history(self):
+        cli.main(["init", str(self.root)])
+        self.assertIn("coordinator checkin --quiet", lead.current_prompt(self.cfg))
+        lead.set_prompt(self.cfg, "Check-in. Watch lane api.\n\nReply in one line.", "api lane started")
+        lead.set_prompt(self.cfg, "Check-in. Watch lanes api and ui.", "ui lane started")
+        text = (self.cfg.agents_dir / "HEARTBEAT.md").read_text()
+        self.assertIn("> Check-in. Watch lanes api and ui.", text)
+        self.assertNotIn("Watch lane api.", text.split("## Prompt history")[0])
+        history = text.split("## Prompt history")[1]
+        self.assertLess(history.index("ui lane started"), history.index("api lane started"))
+        self.assertIn("## Adapting the beat", text)
+        self.assertEqual(text.count("## Prompt history"), 1)
+        self.assertEqual(lead.current_prompt(self.cfg), "Check-in. Watch lanes api and ui.")
 
 
 if __name__ == "__main__":

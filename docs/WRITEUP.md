@@ -44,11 +44,13 @@ A fixed rule set would have been wrong within a week. What held still was a smal
 
 1. **An anchor that is always true.** One status file says what is done, what is running and what waits on me. It is updated in the same commit as the work it describes, which is why it changed in nearly half of all commits. Every resume and every check-in starts by reading it, so a wrong belief can't survive long.
 2. **A heartbeat.** Every 30 minutes a scheduled check-in looks at the same few things: usage left on each account, finished and failed jobs, quiet workers, and whether the status file is still true. Then it acts. Most check-ins are one line: nothing changed. This is what "autonomous" means in practice. It isn't a long plan executed blindly; it's a short look, repeated.
-3. **Corrections become rules the same day,** in my words, with the date and the reason. The rule they replace is superseded in place, so two rules never contradict. Changing a rule is cheap, so rules stay right instead of just staying put.
-4. **A clear decision boundary.** The agent decides technical matters: design, tools, tests, which worker does what, which model, how many. It asks me only about push, deploy, deleting anything and changes users can see. That line is what makes unattended work safe: drift can't reach anything expensive without passing me.
-5. **Checking is separate from building.** Receipts from the right checkout, a reviewer who didn't write the code, blind judges with controls. An autonomous system without this drifts into confident nonsense.
-6. **Resources are chosen as the work goes.** Which model, how many workers, how much effort: decided per task, from the usage left. The strongest model does design and debugging, the cheapest one that can do the job does the rest, and the fallback order changed several times as accounts and providers changed.
-7. **A problem that repeats becomes a tool or a rule.** Everything in Part 2 started as a failure that happened at least once.
+3. **Corrections become rules the same day,** in my words, with the date and the reason. The rule they replace is superseded in place, so two rules never contradict. Changing a rule is cheap, so rules stay right instead of just staying put. Most corrections were not about the code at all, but about how to work with me: how long a reply should be, when to ask and how, what to show before a decision, what not to bring up. Those live in the lead's own memory, separate from the agents' rules, and they are what makes a long collaboration feel effortless.
+4. **A record of what was settled.** Ideas that were measured and rejected, with the number that rejected them, so nobody tries them again a week later. Every new round read it before proposing anything.
+5. **The lead keeps its own handoff.** The lead's context gets compacted or the session ends, so a short state file says what runs, what waits on me and what comes next. Every resume starts there.
+6. **A clear decision boundary.** The agent decides technical matters: design, tools, tests, which worker does what, which model, how many. It asks me only about push, deploy, deleting anything and changes users can see. That line is what makes unattended work safe: drift can't reach anything expensive without passing me.
+7. **Checking is separate from building.** Receipts from the right checkout, a reviewer who didn't write the code, blind judges with controls. An autonomous system without this drifts into confident nonsense.
+8. **Resources are chosen as the work goes.** Which model, how many workers, how much effort: decided per task, from the usage left. The strongest model does design and debugging, the cheapest one that can do the job does the rest, and the fallback order changed several times as accounts and providers changed.
+9. **A problem that repeats becomes a tool or a rule.** Everything in Part 2 started as a failure that happened at least once.
 
 The same shape turned up in the always-on personal agents that shipped in autumn 2026: OpenAI's dots, Anthropic's Claude Duet, xAI's Grok Bot and Meta's Muse. Each gives an agent its own computer, memory carried across sessions, and periodic check-ins instead of a live stream; Duet briefs you in the morning, then stays quiet until something needs you. Each also asks for approval before sensitive actions, and Grok Bot can run several bots that split the work. For coding, three things matter that those products don't advertise:
 - **The state lives in git,** so every rule change is auditable.
@@ -196,7 +198,9 @@ The fixes:
 | Command | Problem it solves |
 |---|---|
 | `coordinator checkin` | The heartbeat: usage, failed jobs, quiet lanes, status-file drift (Part 1) |
-| `coordinator rule add / retire / render` | Rules that change with the user, with dates, quotes and history (Part 1) |
+| `coordinator rule add / retire / render` | Rules that change with the user, with dates, quotes and history; `--for coordinator` for how to work with them (Part 1) |
+| `coordinator settled`, `coordinator handoff`, `coordinator heartbeat set` | What was already measured; the lead's own state; the check-in prompt's history (Part 1) |
+| `coordinator task` | Done decided by a check, not by the agent |
 | `coordinator.json`, `coordinator policy` | The decision boundary, models and budget, as data (Part 1) |
 | `coordinator jobs launch / status / log / stop` | Jobs that survive the agent, with markers that can't lie (§1, §2) |
 | `coordinator wait` | Short blocking waits (§2) |

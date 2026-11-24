@@ -16,6 +16,12 @@ Global options go before the subcommand: `coordinator [--home DIR] [--out JOBS_D
 | `coordinator task reopen T3 --why "REASON"` | It wasn't done after all. |
 | `coordinator task list [--all] [--json]` | Open, claimed and blocked tasks; `--all` adds the done ones. |
 | `coordinator rule add "TEXT" --why "WORDS" [--by user] [--section S] [--supersedes R3,R5]` | Record a rule with the user's words and the date, superseding older rules. Re-renders the rules. |
+| `coordinator rule add "TEXT" --why "WORDS" --for coordinator` | A rule about how the lead works with this user (reply style, how to ask, what they care about). It renders into `WORKING_WITH_USER.md`, which the lead reads at every resume, not into the agents' rules. |
+| `coordinator settled add "IDEA" --result "WHAT WAS MEASURED" [--verdict rejected\|adopted\|parked] [--evidence E]` | Record an idea that was already tried, with its result, in `SETTLED.md`. The check-in flags open tasks that look like a settled idea. |
+| `coordinator settled check "TEXT"` | Does this idea match something settled? Exit 1 with the matches if it does. |
+| `coordinator settled reopen S2 --why "WHAT CHANGED"` / `settled list` | Reopen an item when something changed that makes it worth another look; list them all. |
+| `coordinator handoff` | Show the lead's own handoff (`lead_handoff`, default `docs/agents/LEAD_HANDOFF.md`) and how old it is. The check-in flags it when it is missing or behind the commits. |
+| `coordinator heartbeat set --file PROMPT.txt --why "WHAT CHANGED"` / `heartbeat show` | Record a new check-in prompt with the reason the work needed it. It renders into `HEARTBEAT.md`, with the history of every change below it. |
 | `coordinator rule retire R7 --why "REASON"` | Drop a rule that no longer serves the work. |
 | `coordinator rule list [--all] [--json]` | Live rules; `--all` adds the superseded and retired ones. |
 | `coordinator rule render` | Rewrite the generated block of `AGENT_RULES.md` (decision boundary, models and budget, live rules) and `RULES_HISTORY.md`. Text outside the markers is kept. |
@@ -25,8 +31,10 @@ Global options go before the subcommand: `coordinator [--home DIR] [--out JOBS_D
 - `agents_dir`, `status_file`;
 - `heartbeat`: `every_minutes`, `silent_lane_minutes`, `status_stale_commits`, `fresh_start_hours`;
 - `usage_commands`: a list of commands, each a string or a list of arguments;
+- `agents_command`: a command that prints the live agents as JSON, either an array or one object per line, with `name`, `state`, `updated` (epoch seconds or ISO), `context_tokens`, `model` and `account`. Use it to wrap your harness's agent list. With it, the check-in sees agents that never post to the board: quiet ones, ones over `relaunch_context_tokens`, and more than one strong-model agent on an account;
+- `lead_handoff`;
 - `boundary`: `decide` and `ask` lists;
-- `models`: `roles`, `fallback`, `checkpoint_usage_percent`, `relaunch_context_tokens`.
+- `models`: `roles`, `fallback`, `checkpoint_usage_percent`, `relaunch_context_tokens`, `strong` (substrings that mark a strong model name), `one_strong_per_account`.
 
 ## Jobs
 | Command | What it does |

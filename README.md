@@ -12,6 +12,8 @@ What makes that work isn't a fixed rule set. It is a small loop:
 The kit gives you that loop and the tools that grew out of running it:
 
 - **`coordinator checkin`**: the heartbeat. Usage from any provider, failed or stalled jobs, quiet workers, a status file that fell behind the commits.
+- **A memory layer for the lead:** `WORKING_WITH_USER.md` (how this user wants to be worked with, built from their corrections with `rule add --for coordinator`), `LEAD_HANDOFF.md` (the lead's own state, flagged when stale), `SETTLED.md` (ideas already measured, so nobody retries them; the check-in flags lookalike tasks) and the check-in prompt's own history.
+- **Agents from your harness:** `agents_command` wraps any harness's agent list. The check-in then sees agents that never post: quiet ones, ones with too large a context, and two strong models on one account.
 - **`coordinator task`**: a task list where "done" needs a passing check or a completed job as evidence, so agents can't declare victory early.
 - **`coordinator rule add/retire`**: rules that evolve, with your words, the date and their history. Rendered into the agents' rules file along with the decision boundary and model policy from `coordinator.json`.
 - **Detached jobs** survive the agent that started them, and their completion markers can't lie. **Short blocking waits** keep agents cheap and still able to hear messages.

@@ -9,11 +9,11 @@ import time
 from importlib import resources
 from pathlib import Path
 
-from . import __version__, board, checkin, data, jobs, lock, rules, status, tasks, tidy, wait
+from . import __version__, board, checkin, data, jobs, lead, lock, rules, settled, status, tasks, tidy, wait
 from .config import NAME as CONFIG_NAME, DEFAULT as CONFIG_DEFAULT, Config
 from .home import home, human_age, tail_lines
 
-TEMPLATES = ("AGENT_RULES.md", "HEARTBEAT.md", "LESSONS.md", "HANDOFF.md", "AGENTS.md", "protected_data.json",
+TEMPLATES = ("AGENT_RULES.md", "HEARTBEAT.md", "LESSONS.md", "LEAD_HANDOFF.md", "HANDOFF.md", "AGENTS.md", "protected_data.json",
              "briefs/README.md", "briefs/lane-round.md", "briefs/research-round.md", "briefs/review-round.md",
              "briefs/finish.md")
 
@@ -54,7 +54,8 @@ def cmd_init(a) -> int:
         dest.write_text(src.joinpath(rel).read_text(encoding="utf-8"), encoding="utf-8", newline="\n")
         print(f"wrote    {dest}")
     rules.render(cfg)
-    print(f"rendered {target / 'AGENT_RULES.md'}")
+    settled.render(cfg)
+    print(f"rendered {target / 'AGENT_RULES.md'}, WORKING_WITH_USER.md, SETTLED.md")
     print("Next: point your agent instruction file at AGENT_RULES.md (see AGENTS.md), set status_file and "
           "usage_commands in coordinator.json, and schedule the check-in from HEARTBEAT.md.")
     return 0
@@ -193,10 +194,12 @@ def _cfg(a) -> Config:
 def cmd_rule(a) -> int:
     cfg = _cfg(a)
     if a.rule_cmd == "add":
-        e = rules.add(cfg, a.text, a.why or "", a.by, a.section, [x.strip() for x in (a.supersedes or "").split(",") if x.strip()])
+        e = rules.add(cfg, a.text, a.why or "", a.by, a.section,
+                      [x.strip() for x in (a.supersedes or "").split(",") if x.strip()], audience=a.audience)
         rules.render(cfg)
+        where = "WORKING_WITH_USER.md" if a.audience == "coordinator" else "AGENT_RULES.md"
         print(f"added {e['id']}" + (f", superseding {', '.join(e['supersedes'])}" if e["supersedes"] else "")
-              + f"; rendered {cfg.agents_dir / 'AGENT_RULES.md'}")
+              + f"; rendered {cfg.agents_dir / where}")
         return 0
     if a.rule_cmd == "retire":
         rules.retire(cfg, a.id, a.why)
@@ -213,7 +216,8 @@ def cmd_rule(a) -> int:
         return 0
     for r in rows:
         tag = "" if r["status"] == "live" else f" [{r['status']}]"
-        print(f"{r['id']}{tag} ({r['section']}, {r['by']} {r['date']}): {r['text']}")
+        who = " for coordinator" if r.get("audience") == "coordinator" else ""
+        print(f"{r['id']}{tag} ({r['section']}{who}, {r['by']} {r['date']}): {r['text']}")
     if not rows:
         print("no rules yet")
     return 0
@@ -246,6 +250,56 @@ def cmd_checkin(a) -> int:
     cfg = _cfg(a)
     d = checkin.collect(cfg, a.home, a.out, run_usage=not a.no_usage)
     _dump(d) if a.json else print(checkin.render(d, quiet=a.quiet))
+    return 0
+
+
+def cmd_settled(a) -> int:
+    cfg = _cfg(a)
+    if a.settled_cmd == "add":
+        e = settled.add(cfg, a.idea, a.result, a.verdict, a.evidence)
+        print(f"settled {e['id']} [{e['verdict']}]: {e['idea']}")
+        return 0
+    if a.settled_cmd == "reopen":
+        settled.reopen(cfg, a.id, a.why)
+        print(f"reopened {a.id}")
+        return 0
+    if a.settled_cmd == "check":
+        hits = settled.matches(cfg, a.text)
+        for h in hits:
+            print(f"{h['id']} [{h['verdict']}] {h['idea']} -> {h['result']} (match {h['score']})")
+        if not hits:
+            print("nothing settled matches")
+        return 1 if hits else 0
+    rows = list(settled.items(cfg).values())
+    if a.json:
+        _dump(rows)
+    else:
+        for r in rows:
+            print(f"{r['id']} [{r['verdict'] if r['status'] == 'settled' else 'reopened'}] {r['idea']} -> {r['result']}")
+        if not rows:
+            print("nothing settled yet")
+    return 0
+
+
+def cmd_heartbeat(a) -> int:
+    cfg = _cfg(a)
+    if a.hb_cmd == "set":
+        text = Path(a.file).read_text(encoding="utf-8")
+        lead.set_prompt(cfg, text, a.why)
+        print(f"recorded; rendered {cfg.agents_dir / 'HEARTBEAT.md'}. Reschedule the check-in with the new prompt.")
+        return 0
+    print(lead.current_prompt(cfg) or "no prompt recorded yet")
+    return 0
+
+
+def cmd_handoff(a) -> int:
+    cfg = _cfg(a)
+    p = lead.handoff_path(cfg)
+    if not p.exists():
+        print(f"{p} does not exist yet (template: coordinator init)")
+        return 1
+    print(f"{p} (updated {human_age(time.time() - p.stat().st_mtime)} ago)")
+    print(p.read_text(encoding="utf-8"))
     return 0
 
 
@@ -307,6 +361,8 @@ def build_parser() -> argparse.ArgumentParser:
     ra.add_argument("--why", help="the user's words (or the incident) behind it")
     ra.add_argument("--by", default="user")
     ra.add_argument("--section", default="General")
+    ra.add_argument("--for", dest="audience", choices=("agents", "coordinator"), default="agents",
+                    help="agents: every agent follows it; coordinator: how the lead works with this user")
     ra.add_argument("--supersedes", help="comma-separated rule ids this replaces")
     rr = rs.add_parser("retire", help="drop a rule that no longer serves the work")
     rr.add_argument("id")
@@ -325,6 +381,33 @@ def build_parser() -> argparse.ArgumentParser:
 
     pol = sub.add_parser("policy", help="show the project settings in effect (coordinator.json merged with defaults)")
     pol.set_defaults(func=cmd_policy)
+
+    se = sub.add_parser("settled", help="ideas already measured: don't redo them")
+    ses = se.add_subparsers(dest="settled_cmd", required=True)
+    sa = ses.add_parser("add", help='coordinator settled add "idea" --result "what was measured" [--verdict rejected]')
+    sa.add_argument("idea")
+    sa.add_argument("--result", required=True)
+    sa.add_argument("--verdict", default="rejected", choices=("rejected", "adopted", "parked"))
+    sa.add_argument("--evidence", default="")
+    sr = ses.add_parser("reopen", help="something changed that makes it worth another look")
+    sr.add_argument("id")
+    sr.add_argument("--why", required=True)
+    sc = ses.add_parser("check", help="does this idea match something settled?")
+    sc.add_argument("text")
+    sl = ses.add_parser("list")
+    sl.add_argument("--json", action="store_true")
+    se.set_defaults(func=cmd_settled)
+
+    hb = sub.add_parser("heartbeat", help="the check-in prompt, with its history")
+    hbs = hb.add_subparsers(dest="hb_cmd", required=True)
+    hset = hbs.add_parser("set", help="record a new check-in prompt and why the work needs it")
+    hset.add_argument("--file", required=True, help="text file with the new prompt")
+    hset.add_argument("--why", required=True)
+    hbs.add_parser("show", help="print the current prompt")
+    hb.set_defaults(func=cmd_heartbeat)
+
+    ho = sub.add_parser("handoff", help="the lead's own handoff: where it is and how current")
+    ho.set_defaults(func=cmd_handoff)
 
     tk = sub.add_parser("task", help="a task list where done needs evidence: add, claim, done, reopen, list")
     tks = tk.add_subparsers(dest="task_cmd", required=True)

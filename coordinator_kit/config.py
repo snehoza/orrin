@@ -18,7 +18,11 @@ DEFAULT = {
     "status_file": "TODO.md",
     "heartbeat": {"every_minutes": 30, "silent_lane_minutes": 45, "status_stale_commits": 10,
                   "fresh_start_hours": 8},
+    "lead_handoff": "docs/agents/LEAD_HANDOFF.md",
     "usage_commands": [],
+    # A command printing the live agents as JSON (an array, or one object per line):
+    # {"name", "state", "updated" (epoch s or ISO), "context_tokens", "model", "account"}.
+    "agents_command": None,
     "boundary": {
         "decide": ["technical choices: design, libraries, tests, tools, which lane does what",
                    "how many agents run and on which models",
@@ -32,6 +36,8 @@ DEFAULT = {
         "fallback": [],
         "checkpoint_usage_percent": 90,
         "relaunch_context_tokens": None,
+        "strong": [],
+        "one_strong_per_account": False,
     },
 }
 
