@@ -1,5 +1,5 @@
 {
-  "comment": "Data that must never be removed by hand. Paths are relative to this file unless absolute. kind: source (irreplaceable), golden (self-contained reference outputs; list their inputs), cache (rebuildable; may be archived). Check with: coordinator data --registry protected_data.json check",
+  "comment": "Data that must never be removed by hand. Paths are relative to this file unless absolute. kind: source (irreplaceable), golden (self-contained reference outputs; list their inputs), cache (rebuildable; may be archived). Check with: orrin data --registry protected_data.json check",
   "entries": [
     {
       "id": "raw-dataset",

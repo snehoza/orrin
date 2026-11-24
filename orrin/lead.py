@@ -18,7 +18,7 @@ from pathlib import Path
 
 from .config import Config
 
-PBEGIN, PEND = "<!-- coordinator:prompt -->", "<!-- /coordinator:prompt -->"
+PBEGIN, PEND = "<!-- orrin:prompt -->", "<!-- /orrin:prompt -->"
 
 
 def handoff_path(cfg: Config) -> Path:

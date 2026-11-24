@@ -27,7 +27,7 @@ It did not drift. This post is about why. My first guess was "good rules", and t
 | Dated quotes of my words inside the rules | 29, from 12 different days |
 | Notes recording my corrections | 64, about 58 mentions of a rule being superseded |
 | Small tools written along the way | 115 |
-| Worker agents launched | 1,443, from 1 to 140 a day, across 15 different models |
+| Worker and helper agent transcripts | about 1,440, up to 140 in a day, across nine model families |
 
 The rules were never stable, and most of the important ones were reversed at least once:
 - "never darken" became "follow the physics";
@@ -63,7 +63,7 @@ Others building agents that run for hours or weeks arrived at the same parts, of
 
 | System | What it found | Where it lives in the kit |
 |---|---|---|
-| Anthropic, [long-running harness](https://www.anthropic.com/engineering/effective-harnesses-for-long-running-agents) | An initializer sets up the environment; later sessions read a progress file and git log, take one feature from a JSON list, verify it, commit. Agents only flip a feature to passing, which stops early "done" claims. | The status file and handoffs; `coordinator task` with checks |
+| Anthropic, [long-running harness](https://www.anthropic.com/engineering/effective-harnesses-for-long-running-agents) | An initializer sets up the environment; later sessions read a progress file and git log, take one feature from a JSON list, verify it, commit. Agents only flip a feature to passing, which stops early "done" claims. | The status file and handoffs; `orrin task` with checks |
 | Anthropic, [planner / generator / evaluator](https://www.anthropic.com/engineering/harness-design-long-running-apps) | Agents overrate their own work. A separate, skeptical evaluator with criteria that tests the live app beats self-critique. Context resets with structured handoffs beat compaction alone. | Independent review and blind judging; fresh relaunch from handoffs |
 | OpenAI, [long-horizon Codex](https://developers.openai.com/blog/run-long-horizon-tasks-with-codex) | A plan with milestones and validations, an operating manual, and a live status log that keeps the run inspectable. | Brief, `AGENT_RULES.md`, the status file |
 | Cursor, [scaling agents](https://cursor.com/blog/scaling-agents) | A flat swarm churned. Planners that create tasks plus workers that own them end to end worked. A central integrator became a bottleneck. Periodic fresh starts are still needed against drift and tunnel vision. | Coordinator plans and checks; lanes own their work; `fresh_start_hours` |
@@ -90,11 +90,11 @@ So the kit keeps instructions light on purpose:
 - Every rule carries the user's words.
 - The rules and skills say plainly that they are defaults, not a script, and that the user's current request comes first.
 - Thresholds are numbers, not cautions.
-- `coordinator lint` flags instruction files over their token budget, capitalised commands, rules without a reason, and rule sets that have grown past about 40 rules.
+- `orrin lint` flags instruction files over their token budget, capitalised commands, rules without a reason, and rule sets that have grown past about 40 rules.
 
 ## Part 2: what the loop produced
 
-Writing code was not the hard part. Sharing one machine was: agents killed each other's measurements, waited on locks that never came free, burned their budgets polling, and trusted results that came from the wrong checkout. Each failure below happened at least once. Each fix is now a command in `coordinator-kit`, or a lesson you can adopt when its problem shows up.
+Writing code was not the hard part. Sharing one machine was: agents killed each other's measurements, waited on locks that never came free, burned their budgets polling, and trusted results that came from the wrong checkout. Each failure below happened at least once. Each fix is now a command in `orrin`, or a lesson you can adopt when its problem shows up.
 
 ## 1. Jobs died with the agent
 
@@ -109,8 +109,8 @@ The detached runner writes its state to files: `.pid`, `.log`, and a `.done` mar
 **The rule that came with it:** accept a job only when the marker says `COMPLETE=1` *and* the log ends with `JOB_COMPLETE <name>`. Exit codes alone lied more than once: a waiter that timed out, or a wrapper shell, reported its own status, not the job's.
 
 ```
-coordinator jobs launch --name lane1-gate -- python run_gate.py
-coordinator wait lane1-gate --timeout-min 3
+orrin jobs launch --name lane1-gate -- python run_gate.py
+orrin wait lane1-gate --timeout-min 3
 ```
 
 ## 2. Waiting cost more than working
@@ -128,7 +128,7 @@ Every turn re-sends the whole context, so the number of turns is the cost an age
 - **Polling.** "Is it done yet?" every few seconds. Each check is a full turn.
 - **Long blocking waits.** Agents that blocked on a job for a long stretch left the coordinator's messages unread for up to ten minutes.
 
-**The fix** is a middle path: `coordinator wait` blocks for about three minutes, returns early when the job finishes or fails, and tells the agent to call again if it is still running (exit 3). With nothing else in that turn, an hour-long job costs about twenty cheap turns, and the agent hears messages between them. Jobs print `PROGRESS n/N`, which gives the status an ETA. A line starting `ERROR` stops the job at once instead of after the whole batch.
+**The fix** is a middle path: `orrin wait` blocks for about three minutes, returns early when the job finishes or fails, and tells the agent to call again if it is still running (exit 3). With nothing else in that turn, an hour-long job costs about twenty cheap turns, and the agent hears messages between them. Jobs print `PROGRESS n/N`, which gives the status an ETA. A line starting `ERROR` stops the job at once instead of after the whole batch.
 
 Alongside it, a written rule: **fewer, bigger turns.**
 - Batch independent reads and edits into one response.
@@ -161,7 +161,7 @@ It was 779 lines. It worked, and it was dropped the next day. The jobs were too 
 - a shared mode for light work;
 - a **RAM guard** that *waits* for memory, up to 30 minutes, instead of refusing to start or letting the kernel kill something.
 
-`coordinator-kit` ships only the simple version.
+`orrin` ships only the simple version.
 
 ## 5. Proofs from the wrong checkout
 
@@ -181,7 +181,7 @@ A routine disk cleanup deleted a cache folder. The folder looked derived and reb
 | **Golden** | Reference outputs | Must be self-contained: every input lives inside its own folder |
 | **Cache** | Rebuildable outputs | The only tier that may move, and only to an archive, never deleted |
 
-A registry file lists the sources and goldens. `coordinator data check` fails when a golden reaches outside itself. `coordinator data archive` refuses anything protected, and logs every move so it can be undone.
+A registry file lists the sources and goldens. `orrin data check` fails when a golden reaches outside itself. `orrin data archive` refuses anything protected, and logs every move so it can be undone.
 
 ## 7. Approvals that were not approvals
 
@@ -217,17 +217,17 @@ The fixes:
 
 | Command | Problem it solves |
 |---|---|
-| `coordinator checkin` | The heartbeat: usage, failed jobs, quiet lanes, status-file drift (Part 1) |
-| `coordinator rule add / retire / render` | Rules that change with the user, with dates, quotes and history; `--for coordinator` for how to work with them (Part 1) |
-| `coordinator settled`, `coordinator handoff`, `coordinator heartbeat set` | What was already measured; the lead's own state; the check-in prompt's history (Part 1) |
-| `coordinator task` | Done decided by a check, not by the agent |
-| `coordinator.json`, `coordinator policy` | The decision boundary, models and budget, as data (Part 1) |
-| `coordinator jobs launch / status / log / stop` | Jobs that survive the agent, with markers that can't lie (§1, §2) |
-| `coordinator wait` | Short blocking waits (§2) |
-| `coordinator lock run [--shared]` | A fair, crash-safe machine lock (§3, §4) |
-| `coordinator board`, `status`, `tidy` | Who is doing what; one screen; stale state repaired without data loss |
-| `coordinator data` | Protected sources, self-contained goldens, archive-only cleanup (§6) |
-| `coordinator init` | The rules frame, heartbeat prompt, lessons, briefs and handoff template |
-| `skills/coordinator`, `skills/lane-agent` | The method as Agent Skills, for the lead and for the workers |
+| `orrin checkin` | The heartbeat: usage, failed jobs, quiet lanes, status-file drift (Part 1) |
+| `orrin rule add / retire / render` | Rules that change with the user, with dates, quotes and history; `--for coordinator` for how to work with them (Part 1) |
+| `orrin settled`, `orrin handoff`, `orrin heartbeat set` | What was already measured; the lead's own state; the check-in prompt's history (Part 1) |
+| `orrin task` | Done decided by a check, not by the agent |
+| `orrin.json`, `orrin policy` | The decision boundary, models and budget, as data (Part 1) |
+| `orrin jobs launch / status / log / stop` | Jobs that survive the agent, with markers that can't lie (§1, §2) |
+| `orrin wait` | Short blocking waits (§2) |
+| `orrin lock run [--shared]` | A fair, crash-safe machine lock (§3, §4) |
+| `orrin board`, `status`, `tidy` | Who is doing what; one screen; stale state repaired without data loss |
+| `orrin data` | Protected sources, self-contained goldens, archive-only cleanup (§6) |
+| `orrin init` | The rules frame, heartbeat prompt, lessons, briefs and handoff template |
+| `skills/orrin`, `skills/orrin-lane` | The method as Agent Skills, for the lead and for the workers |
 
 The tools are small: standard-library Python, no daemon, state in plain files. They aren't the point. The kit starts you with almost no rules, a heartbeat and a way to record corrections, and lets your own rules grow from the way you work.

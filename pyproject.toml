@@ -3,7 +3,7 @@ requires = ["setuptools>=77"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "coordinator-kit"
+name = "orrin"
 version = "1.0.0"
 description = "Run several coding agents on one machine: detached jobs with completion markers, a fair machine lock, short waits, a lane board, status, tidy and protected data."
 readme = "README.md"
@@ -23,15 +23,15 @@ classifiers = [
 dependencies = []
 
 [project.urls]
-Homepage = "https://github.com/snehoza/coordinator-kit"
-Issues = "https://github.com/snehoza/coordinator-kit/issues"
-Changelog = "https://github.com/snehoza/coordinator-kit/blob/main/CHANGELOG.md"
+Homepage = "https://github.com/snehoza/orrin"
+Issues = "https://github.com/snehoza/orrin/issues"
+Changelog = "https://github.com/snehoza/orrin/blob/main/CHANGELOG.md"
 
 [project.scripts]
-coordinator = "coordinator_kit.cli:main"
+orrin = "orrin.cli:main"
 
 [tool.setuptools.packages.find]
-include = ["coordinator_kit*"]
+include = ["orrin*"]
 
 [tool.setuptools.package-data]
-coordinator_kit = ["templates/*.md", "templates/*.json", "templates/briefs/*.md"]
+orrin = ["templates/*.md", "templates/*.json", "templates/briefs/*.md"]

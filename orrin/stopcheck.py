@@ -2,7 +2,7 @@
 
 The heartbeat checks in every N minutes. Between beats, a lead that finishes a turn while a
 job has failed or ready tasks wait would sit idle until the next beat. A harness stop hook
-closes that gap: when the agent is about to stop, ``coordinator stop-check`` peeks at the same
+closes that gap: when the agent is about to stop, ``orrin stop-check`` peeks at the same
 state as ``checkin`` (without the usage commands and without consuming the check-in's
 "since last time" mark) and, if there is work the agent can do itself, tells the harness to
 keep going with a short reason.
@@ -19,7 +19,7 @@ It is deliberately small:
 
 Claude Code: add to ``.claude/settings.json``::
 
-    {"hooks": {"Stop": [{"hooks": [{"type": "command", "command": "coordinator stop-check"}]}]}}
+    {"hooks": {"Stop": [{"hooks": [{"type": "command", "command": "orrin stop-check"}]}]}}
 
 Other harnesses: call it from whatever runs when the agent ends a turn; exit 0 with
 ``{"decision": "block", "reason": ...}`` on stdout means "keep going".
@@ -56,7 +56,7 @@ def decide(cfg: Config, hook_input: dict, root=None, jobs_out=None) -> dict | No
         return None
     write_json(state_path, {"blocks": state["blocks"] + 1, "time": time.time()})
     shown = [i if len(i) <= 160 else i[:157] + "..." for i in items[:3]]
-    more = f" (+{len(items) - 3} more: coordinator checkin)" if len(items) > 3 else ""
+    more = f" (+{len(items) - 3} more: orrin checkin)" if len(items) > 3 else ""
     return {"decision": "block", "reason": "Before stopping:\n- " + "\n- ".join(shown) + more}
 
 
@@ -69,7 +69,7 @@ def main(cfg: Config, root=None, jobs_out=None) -> int:
     try:
         result = decide(cfg, hook_input, root, jobs_out)
     except Exception as e:  # a broken hook must never trap the agent
-        print(f"coordinator stop-check skipped: {e}", file=sys.stderr)
+        print(f"orrin stop-check skipped: {e}", file=sys.stderr)
         return 0
     if result:
         print(json.dumps(result))

@@ -1,4 +1,4 @@
-"""The ``coordinator`` command."""
+"""The ``orrin`` command."""
 from __future__ import annotations
 
 import argparse
@@ -44,7 +44,7 @@ def cmd_init(a) -> int:
         print(f"wrote    {cfg_path}")
     cfg = Config(cfg_path)
     target = cfg.agents_dir
-    src = resources.files("coordinator_kit").joinpath("templates")
+    src = resources.files("orrin").joinpath("templates")
     for rel in TEMPLATES:
         dest = target / rel
         if dest.exists():
@@ -57,7 +57,7 @@ def cmd_init(a) -> int:
     settled.render(cfg)
     print(f"rendered {target / 'AGENT_RULES.md'}, WORKING_WITH_USER.md, SETTLED.md")
     print("Next: point your agent instruction file at AGENT_RULES.md (see AGENTS.md), set status_file and "
-          "usage_commands in coordinator.json, and schedule the check-in from HEARTBEAT.md.")
+          "usage_commands in orrin.json, and schedule the check-in from HEARTBEAT.md.")
     return 0
 
 
@@ -306,7 +306,7 @@ def cmd_handoff(a) -> int:
     cfg = _cfg(a)
     p = lead.handoff_path(cfg)
     if not p.exists():
-        print(f"{p} does not exist yet (template: coordinator init)")
+        print(f"{p} does not exist yet (template: orrin init)")
         return 1
     print(f"{p} (updated {human_age(time.time() - p.stat().st_mtime)} ago)")
     print(p.read_text(encoding="utf-8"))
@@ -315,7 +315,7 @@ def cmd_handoff(a) -> int:
 
 def cmd_policy(a) -> int:
     cfg = _cfg(a)
-    print(f"# {cfg.path or '(no coordinator.json found; defaults)'}")
+    print(f"# {cfg.path or '(no orrin.json found; defaults)'}")
     _dump(cfg.data)
     return 0
 
@@ -350,23 +350,23 @@ def cmd_data(a) -> int:
 # --- parser ---------------------------------------------------------------------------------------------
 
 def build_parser() -> argparse.ArgumentParser:
-    p = argparse.ArgumentParser(prog="coordinator", description=(
+    p = argparse.ArgumentParser(prog="orrin", description=(
         "Run several coding agents on one machine: detached jobs with markers, a fair machine lock, "
         "short waits, a lane board, status, tidy and protected data."))
-    p.add_argument("--version", action="version", version=f"coordinator-kit {__version__}")
-    p.add_argument("--home", help="shared state folder (default $COORDINATOR_HOME or ~/.coordinator)")
+    p.add_argument("--version", action="version", version=f"orrin {__version__}")
+    p.add_argument("--home", help="shared state folder (default $ORRIN_HOME or ~/.orrin)")
     p.add_argument("--out", help="jobs folder (default <home>/jobs)")
-    p.add_argument("--config", help="project settings (default: coordinator.json in this folder or a parent)")
+    p.add_argument("--config", help="project settings (default: orrin.json in this folder or a parent)")
     sub = p.add_subparsers(dest="cmd", required=True)
 
-    s = sub.add_parser("init", help="set up a project: coordinator.json, agent rules, heartbeat, lessons, briefs, handoff")
+    s = sub.add_parser("init", help="set up a project: orrin.json, agent rules, heartbeat, lessons, briefs, handoff")
     s.add_argument("root", nargs="?", default=".", help="project root (default: here)")
     s.add_argument("--agents-dir", default="docs/agents")
     s.set_defaults(func=cmd_init)
 
     r = sub.add_parser("rule", help="rules that evolve: add, retire, list, render")
     rs = r.add_subparsers(dest="rule_cmd", required=True)
-    ra = rs.add_parser("add", help='coordinator rule add "rule" --why "what the user said" [--supersedes R3]')
+    ra = rs.add_parser("add", help='orrin rule add "rule" --why "what the user said" [--supersedes R3]')
     ra.add_argument("text")
     ra.add_argument("--why", help="the user's words (or the incident) behind it")
     ra.add_argument("--by", default="user")
@@ -389,12 +389,12 @@ def build_parser() -> argparse.ArgumentParser:
     c.add_argument("--json", action="store_true")
     c.set_defaults(func=cmd_checkin)
 
-    pol = sub.add_parser("policy", help="show the project settings in effect (coordinator.json merged with defaults)")
+    pol = sub.add_parser("policy", help="show the project settings in effect (orrin.json merged with defaults)")
     pol.set_defaults(func=cmd_policy)
 
     se = sub.add_parser("settled", help="ideas already measured: don't redo them")
     ses = se.add_subparsers(dest="settled_cmd", required=True)
-    sa = ses.add_parser("add", help='coordinator settled add "idea" --result "what was measured" [--verdict rejected]')
+    sa = ses.add_parser("add", help='orrin settled add "idea" --result "what was measured" [--verdict rejected]')
     sa.add_argument("idea")
     sa.add_argument("--result", required=True)
     sa.add_argument("--verdict", default="rejected", choices=("rejected", "adopted", "parked"))
@@ -450,7 +450,7 @@ def build_parser() -> argparse.ArgumentParser:
 
     j = sub.add_parser("jobs", help="detached jobs with completion markers")
     js = j.add_subparsers(dest="jobs_cmd", required=True)
-    jl = js.add_parser("launch", help="start a detached job: coordinator jobs launch --name N -- CMD ...")
+    jl = js.add_parser("launch", help="start a detached job: orrin jobs launch --name N -- CMD ...")
     jl.add_argument("--name", required=True)
     jl.add_argument("--lock", choices=("exclusive", "shared", "none"), default="exclusive",
                     help="machine lock while it runs (default exclusive: heavy jobs run one at a time)")
@@ -462,7 +462,7 @@ def build_parser() -> argparse.ArgumentParser:
     jl.add_argument("--env", action="append", default=[], metavar="KEY=VALUE")
     jl.add_argument("--no-fail-fast", dest="fail_fast", action="store_false",
                     help="don't stop on the first ERROR/FATAL/JOB_FATAL line")
-    jl.add_argument("--smoke", type=int, help="set COORDINATOR_SMOKE=N for the command (run only N items first)")
+    jl.add_argument("--smoke", type=int, help="set ORRIN_SMOKE=N for the command (run only N items first)")
     jl.add_argument("--lane", default="")
     jl.add_argument("command", nargs=argparse.REMAINDER)
     jl.set_defaults(parser=jl)
@@ -489,7 +489,7 @@ def build_parser() -> argparse.ArgumentParser:
 
     lk = sub.add_parser("lock", help="the fair machine lock")
     lks = lk.add_subparsers(dest="lock_cmd", required=True)
-    lr = lks.add_parser("run", help="run a command while holding the lock: coordinator lock run [--shared] -- CMD")
+    lr = lks.add_parser("run", help="run a command while holding the lock: orrin lock run [--shared] -- CMD")
     lr.add_argument("--shared", action="store_true", help="share with other short commands; still yields to exclusive jobs")
     lr.add_argument("--name", default="machine")
     lr.add_argument("--timeout-min", type=float)

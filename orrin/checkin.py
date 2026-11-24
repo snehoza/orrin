@@ -7,7 +7,7 @@ things on a regular beat and act on what changed:
   ``NN% used`` at or above ``models.checkpoint_usage_percent`` becomes an attention item. A failing
   command is "unavailable", never zero.
 * **jobs**: failed, stopped or stalled jobs stay on the list until handled (relaunched, or
-  ``coordinator jobs ack``), so a check-in that crashed before acting loses nothing. Successful jobs
+  ``orrin jobs ack``), so a check-in that crashed before acting loses nothing. Successful jobs
   are reported once.
 * **lanes**: quiet longer than ``silent_lane_minutes``, unless their bound job is still running
   (waiting on a job is not silence); stale (process or job gone); or running longer than
@@ -169,7 +169,7 @@ def collect(cfg: Config, root=None, jobs_out=None, run_usage: bool = True, mark:
     for r in unhandled:
         what = "runner gone, no marker" if r["state"] == "stalled" else f"{r.get('reason')}, exit {r.get('exit_code')}"
         attention.append(f"job {r['name']} {r['state']} ({what}): read its log, fix and relaunch, "
-                         f"then `coordinator jobs ack {r['name']}`")
+                         f"then `orrin jobs ack {r['name']}`")
     for r in lanes:
         job = by_name.get(r.get("job") or "")
         waiting_on_job = job is not None and job["state"] in ACTIVE

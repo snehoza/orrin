@@ -5,7 +5,7 @@ Capitalised MUST/NEVER makes newer models over-apply a rule. A cautious phrase (
 context grows") gets read far too cautiously. And the more instructions there are, the fewer get
 followed well. An agent with a stack of rigid rules stops doing obvious things.
 
-``coordinator lint`` checks the files agents read:
+``orrin lint`` checks the files agents read:
 
 * **budget**: rough token size per file against a budget, because every token is read on every
   turn;

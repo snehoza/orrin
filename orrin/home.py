@@ -1,7 +1,7 @@
 """Where shared state lives, and small file helpers.
 
 All agents on a machine must see the same lock, board and jobs, so the default home is per user,
-not per repository: ``~/.coordinator`` (override with ``COORDINATOR_HOME`` or ``--home``).
+not per repository: ``~/.orrin`` (override with ``ORRIN_HOME`` or ``--home``).
 """
 from __future__ import annotations
 
@@ -17,7 +17,7 @@ NAME_RE = re.compile(r"[A-Za-z0-9][A-Za-z0-9_.-]{0,99}")
 
 
 def home(path: str | os.PathLike | None = None) -> Path:
-    root = Path(path or os.environ.get("COORDINATOR_HOME") or Path.home() / ".coordinator")
+    root = Path(path or os.environ.get("ORRIN_HOME") or Path.home() / ".orrin")
     root.mkdir(parents=True, exist_ok=True)
     return root
 

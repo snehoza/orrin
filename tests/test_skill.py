@@ -53,25 +53,25 @@ class SkillSpecTests(unittest.TestCase):
 
     def test_our_own_instructions_pass_lint(self):
         """Skills and templates stay small and calm: no shouting, within token budgets."""
-        from coordinator_kit import lint
-        files = list(SKILLS.glob("*/SKILL.md")) + list((SKILLS.parent / "coordinator_kit" / "templates").rglob("*.md"))
+        from orrin import lint
+        files = list(SKILLS.glob("*/SKILL.md")) + list((SKILLS.parent / "orrin" / "templates").rglob("*.md"))
         problems = [w for f in files for w in lint.check_text(f.name, f.read_text(encoding="utf-8"))]
         self.assertEqual(problems, [])
-        lane = (SKILLS / "lane-agent" / "SKILL.md").read_text(encoding="utf-8")
+        lane = (SKILLS / "orrin-lane" / "SKILL.md").read_text(encoding="utf-8")
         self.assertLess(lint.tokens(lane), 1100, "the lane skill is read by every worker; keep it near 1k tokens")
 
     def test_command_references_match(self):
-        a = (SKILLS / "coordinator" / "references" / "COMMANDS.md").read_text(encoding="utf-8")
-        b = (SKILLS / "lane-agent" / "references" / "COMMANDS.md").read_text(encoding="utf-8")
-        self.assertEqual(a, b, "keep both skills' COMMANDS.md identical (copy coordinator's)")
+        a = (SKILLS / "orrin" / "references" / "COMMANDS.md").read_text(encoding="utf-8")
+        b = (SKILLS / "orrin-lane" / "references" / "COMMANDS.md").read_text(encoding="utf-8")
+        self.assertEqual(a, b, "keep both skills' COMMANDS.md identical (copy orrin's)")
 
     def test_every_cli_command_is_documented(self):
-        from coordinator_kit import cli
-        text = (SKILLS / "coordinator" / "references" / "COMMANDS.md").read_text(encoding="utf-8")
+        from orrin import cli
+        text = (SKILLS / "orrin" / "references" / "COMMANDS.md").read_text(encoding="utf-8")
         parser = cli.build_parser()
         sub = next(a for a in parser._actions if a.dest == "cmd")
         for name, sp in sub.choices.items():
-            self.assertIn(f"coordinator {name}" if name not in ("data",) else "coordinator data", text, name)
+            self.assertIn(f"orrin {name}" if name not in ("data",) else "orrin data", text, name)
             for action in sp._actions:
                 for nested_name in getattr(action, "choices", None) or {}:
                     if isinstance(action.choices, dict):

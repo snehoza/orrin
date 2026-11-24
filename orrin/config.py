@@ -1,9 +1,9 @@
-"""Project settings as data: ``coordinator.json`` at the project root.
+"""Project settings as data: ``orrin.json`` at the project root.
 
 Everything here is expected to change as the coordinator learns how the user works: where the
 status file is, how often the heartbeat runs, what the agent decides alone and what it must ask,
 which models do which kind of work, and the budget thresholds. Edit the JSON (or ask the
-coordinator to); ``coordinator rule render`` writes the current values into the agent rules.
+coordinator to); ``orrin rule render`` writes the current values into the agent rules.
 """
 from __future__ import annotations
 
@@ -11,7 +11,7 @@ import copy
 import json
 from pathlib import Path
 
-NAME = "coordinator.json"
+NAME = "orrin.json"
 
 DEFAULT = {
     "agents_dir": "docs/agents",

@@ -75,7 +75,7 @@ def launch(name: str, command: list[str], *, out=None, root=None, cwd=None, env:
         "fail_fast": fail_fast, "smoke": smoke, "lane": lane, "home": str(home(root)), "created": time.time(),
     }
     write_json(folder / "job.json", spec)
-    argv = [sys.executable, "-m", "coordinator_kit.jobs", "_run", str(folder)]
+    argv = [sys.executable, "-m", "orrin.jobs", "_run", str(folder)]
     # make the runner importable even when the package is used from a source checkout
     run_env = dict(os.environ)
     pkg_parent = str(Path(__file__).resolve().parents[1])
@@ -189,9 +189,9 @@ class _Runner:
         import subprocess
         env = dict(os.environ)
         env.update(self.spec["env"])
-        env.update(COORDINATOR_JOB=self.name, PYTHONUNBUFFERED="1")
+        env.update(ORRIN_JOB=self.name, PYTHONUNBUFFERED="1")
         if self.spec.get("smoke"):
-            env["COORDINATOR_SMOKE"] = str(self.spec["smoke"])
+            env["ORRIN_SMOKE"] = str(self.spec["smoke"])
         self.phase("running")
         self.child = procs.popen_group(self.spec["command"], cwd=self.spec["cwd"], env=env,
                                        stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
@@ -316,4 +316,4 @@ def stop(folder: Path) -> dict:
 if __name__ == "__main__":
     if len(sys.argv) == 3 and sys.argv[1] == "_run":
         raise SystemExit(_Runner(Path(sys.argv[2])).run())
-    raise SystemExit("internal entry point; use `coordinator jobs ...`")
+    raise SystemExit("internal entry point; use `orrin jobs ...`")

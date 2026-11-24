@@ -7,8 +7,8 @@ import time
 import unittest
 from pathlib import Path
 
-from coordinator_kit import board, checkin, cli, data, jobs, lead, lock, procs, rules, settled, tasks, tidy, wait
-from coordinator_kit.config import Config
+from orrin import board, checkin, cli, data, jobs, lead, lock, procs, rules, settled, tasks, tidy, wait
+from orrin.config import Config
 
 PY = sys.executable
 ROOT = Path(__file__).resolve().parents[1]
@@ -35,7 +35,7 @@ class Home(unittest.TestCase):
 
     def waiter(self, label, shared=False, timeout=30):
         """A separate process that takes the lock, prints its label, holds briefly, releases."""
-        code = (f"import time;from coordinator_kit.lock import FairLock\n"
+        code = (f"import time;from orrin.lock import FairLock\n"
                 f"with FairLock(shared={shared}, label={label!r}, root={str(self.home)!r}, poll=0.05, timeout={timeout}):\n"
                 f"    print('IN', {label!r}, time.time(), flush=True); time.sleep(0.4)\n"
                 f"    print('OUT', {label!r}, time.time(), flush=True)\n")
@@ -148,7 +148,7 @@ class JobTests(Home):
             folder = self.launch("locked", "print('never')", lock="exclusive", lock_timeout_s=0.5)
             _, rows = wait.wait([folder], 30, 0.1)
         self.assertEqual((rows[0]["exit_code"], rows[0]["reason"]), (jobs.EXIT_LOCK, "lock-timeout"))
-        folder = self.launch("smoke", "import os; print('SMOKE', os.environ['COORDINATOR_SMOKE'])", smoke=1)
+        folder = self.launch("smoke", "import os; print('SMOKE', os.environ['ORRIN_SMOKE'])", smoke=1)
         wait.wait([folder], 30, 0.1)
         self.assertIn("SMOKE 1", (folder / "smoke.log").read_text())
 
@@ -247,7 +247,7 @@ class DataTests(unittest.TestCase):
 
 class CliTests(Home):
     def run_cli(self, *args):
-        return subprocess.run([PY, "-m", "coordinator_kit", "--home", str(self.home), *args], env=ENV,
+        return subprocess.run([PY, "-m", "orrin", "--home", str(self.home), *args], env=ENV,
                               capture_output=True, text=True, timeout=60)
 
     def test_end_to_end(self):
@@ -272,7 +272,7 @@ class CliTests(Home):
         target = root / "docs" / "agents"
         for rel in cli.TEMPLATES:
             self.assertTrue((target / rel).is_file(), rel)
-        self.assertTrue((root / "coordinator.json").is_file())
+        self.assertTrue((root / "orrin.json").is_file())
         rules_text = (target / "AGENT_RULES.md").read_text()
         self.assertIn("## Decision boundary", rules_text)
         self.assertIn("None yet", rules_text)
@@ -286,8 +286,8 @@ class RuleTests(unittest.TestCase):
     def setUp(self):
         self._tmp = tempfile.TemporaryDirectory()
         self.root = Path(self._tmp.name)
-        (self.root / "coordinator.json").write_text(json.dumps({"models": {"fallback": ["a", "b"]}}))
-        self.cfg = Config.load(self.root / "coordinator.json")
+        (self.root / "orrin.json").write_text(json.dumps({"models": {"fallback": ["a", "b"]}}))
+        self.cfg = Config.load(self.root / "orrin.json")
 
     def tearDown(self):
         self._tmp.cleanup()
@@ -328,7 +328,7 @@ class CheckinTests(Home):
     def test_flags_failures_quiet_lanes_and_status_drift(self):
         proj = Path(self._tmp.name) / "proj"
         proj.mkdir()
-        (proj / "coordinator.json").write_text(json.dumps({
+        (proj / "orrin.json").write_text(json.dumps({
             "heartbeat": {"status_stale_commits": 2, "silent_lane_minutes": 1},
             "usage_commands": [[PY, "-c", "print('5h 40% used')"], ["definitely-not-a-command-xyz"]]}))
         git = lambda *a: subprocess.run(["git", "-C", str(proj), "-c", "user.name=t", "-c", "user.email=t@t", *a],
@@ -343,7 +343,7 @@ class CheckinTests(Home):
             (proj / f"f{i}").write_text(str(i))
             git("add", "-A")
             git("commit", "-q", "-m", f"work {i}")
-        cfg = Config.load(proj / "coordinator.json")
+        cfg = Config.load(proj / "orrin.json")
         jobs.launch("broke", [PY, "-c", "import sys; sys.exit(2)"], root=self.home, lock="none")
         wait.wait([jobs.resolve("broke", root=self.home)], 30, 0.1)
         board.update("alpha", {"activity": "x"}, root=self.home)
@@ -377,8 +377,8 @@ class TaskTests(Home):
         super().setUp()
         self.proj = Path(self._tmp.name) / "proj"
         self.proj.mkdir()
-        (self.proj / "coordinator.json").write_text("{}")
-        self.cfg = Config.load(self.proj / "coordinator.json")
+        (self.proj / "orrin.json").write_text("{}")
+        self.cfg = Config.load(self.proj / "orrin.json")
 
     def test_done_needs_a_passing_check_or_valid_evidence(self):
         t1 = tasks.add(self.cfg, "build", check=f'"{PY}" -c "import sys; sys.exit(1)"')
@@ -414,10 +414,10 @@ class HeartbeatDetailTests(Home):
         self.proj = Path(self._tmp.name) / "proj"
         self.proj.mkdir()
         (self.proj / "TODO.md").write_text("status")
-        (self.proj / "coordinator.json").write_text(json.dumps({
+        (self.proj / "orrin.json").write_text(json.dumps({
             "heartbeat": {"silent_lane_minutes": 1, "fresh_start_hours": 1},
             "usage_commands": [[PY, "-c", "print('5h 93% used | week 40% used')"]]}))
-        self.cfg = Config.load(self.proj / "coordinator.json")
+        self.cfg = Config.load(self.proj / "orrin.json")
 
     def age_lane(self, lane, seconds, started=0):
         f = board.board_dir(self.home) / f"{lane}.json"
@@ -456,10 +456,10 @@ class HeartbeatDetailTests(Home):
         ]
         script = self.proj / "agents.py"
         script.write_text("import json\nprint(json.dumps(" + repr(agents) + "))\n")
-        (self.proj / "coordinator.json").write_text(json.dumps({
+        (self.proj / "orrin.json").write_text(json.dumps({
             "heartbeat": {"silent_lane_minutes": 45}, "agents_command": [PY, str(script)],
             "models": {"relaunch_context_tokens": 350000, "strong": ["sol"], "one_strong_per_account": True}}))
-        cfg = Config.load(self.proj / "coordinator.json")
+        cfg = Config.load(self.proj / "orrin.json")
         text = "\n".join(checkin.collect(cfg, self.home, run_usage=False)["attention"])
         self.assertIn("agent a1 quiet", text)
         self.assertIn("agent a1 at 400,000 tokens", text)
@@ -470,11 +470,11 @@ class HeartbeatDetailTests(Home):
 
 class LintTests(unittest.TestCase):
     def test_flags_what_makes_agents_rigid(self):
-        from coordinator_kit import lint
+        from orrin import lint
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
-            (root / "coordinator.json").write_text("{}")
-            cfg = Config.load(root / "coordinator.json")
+            (root / "orrin.json").write_text("{}")
+            cfg = Config.load(root / "orrin.json")
             self.assertEqual(lint.check_rule("Wait in 3-minute calls.", "agents went deaf"), [])
             self.assertTrue(any("no --why" in w for w in lint.check_rule("Wait in 3-minute calls.", "")))
             self.assertTrue(any("shouting" in w for w in lint.check_rule("You MUST NEVER push.", "owner")))
@@ -492,15 +492,15 @@ class LintTests(unittest.TestCase):
 
 class StopCheckTests(Home):
     def test_blocks_only_for_agent_work_and_never_loops(self):
-        from coordinator_kit import stopcheck
+        from orrin import stopcheck
         proj = Path(self._tmp.name) / "proj"
         (proj / "docs" / "agents").mkdir(parents=True)
         (proj / "TODO.md").write_text("s")
         (proj / "docs" / "agents" / "LEAD_HANDOFF.md").write_text("h")
-        (proj / "coordinator.json").write_text(json.dumps({
+        (proj / "orrin.json").write_text(json.dumps({
             "heartbeat": {"stop_hook_max_blocks": 2},
             "usage_commands": [[PY, "-c", "print('99% used')"]]}))
-        cfg = Config.load(proj / "coordinator.json")
+        cfg = Config.load(proj / "orrin.json")
         hook = {"session_id": "s1", "stop_hook_active": False}
         self.assertIsNone(stopcheck.decide(cfg, hook, self.home))  # nothing to do, and usage is never checked
         tasks.add(cfg, "write the parser")
@@ -522,8 +522,8 @@ class MemoryLayerTests(unittest.TestCase):
     def setUp(self):
         self._tmp = tempfile.TemporaryDirectory()
         self.root = Path(self._tmp.name)
-        (self.root / "coordinator.json").write_text("{}")
-        self.cfg = Config.load(self.root / "coordinator.json")
+        (self.root / "orrin.json").write_text("{}")
+        self.cfg = Config.load(self.root / "orrin.json")
 
     def tearDown(self):
         self._tmp.cleanup()
@@ -558,7 +558,7 @@ class MemoryLayerTests(unittest.TestCase):
 
     def test_heartbeat_prompt_history(self):
         cli.main(["init", str(self.root)])
-        self.assertIn("coordinator checkin --quiet", lead.current_prompt(self.cfg))
+        self.assertIn("orrin checkin --quiet", lead.current_prompt(self.cfg))
         lead.set_prompt(self.cfg, "Check-in. Watch lane api.\n\nReply in one line.", "api lane started")
         lead.set_prompt(self.cfg, "Check-in. Watch lanes api and ui.", "ui lane started")
         text = (self.cfg.agents_dir / "HEARTBEAT.md").read_text()

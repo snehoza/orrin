@@ -2,7 +2,7 @@ name: release
 
 # Publish to PyPI when a GitHub release is published (tag vX.Y.Z matching pyproject.toml).
 # Uses PyPI trusted publishing: no token is stored. One-time setup on pypi.org:
-# pending publisher = owner snehoza, repository coordinator-kit, workflow release.yml, environment pypi.
+# pending publisher = owner snehoza, repository orrin, workflow release.yml, environment pypi.
 
 on:
   release:
@@ -28,8 +28,8 @@ jobs:
         run: |
           python -m venv /tmp/check
           /tmp/check/bin/pip install dist/*.whl
-          cd /tmp && /tmp/check/bin/coordinator --help > /dev/null
-          /tmp/check/bin/python -c "import coordinator_kit, importlib.resources as r; assert r.files('coordinator_kit').joinpath('templates','briefs','lane-round.md').is_file(); print(coordinator_kit.__version__)"
+          cd /tmp && /tmp/check/bin/orrin --help > /dev/null
+          /tmp/check/bin/python -c "import orrin, importlib.resources as r; assert r.files('orrin').joinpath('templates','briefs','lane-round.md').is_file(); print(orrin.__version__)"
           cp -r "$GITHUB_WORKSPACE/tests" /tmp/tests && cp -r "$GITHUB_WORKSPACE/skills" /tmp/skills
           cd /tmp && /tmp/check/bin/python -m unittest discover -s tests
       - uses: actions/upload-artifact@v4

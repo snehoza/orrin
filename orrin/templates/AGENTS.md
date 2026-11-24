@@ -4,6 +4,6 @@
 
 Before any work, read `{rules_path}` (agent rules: worktrees, jobs and waiting, machine lock, board, validation, handoffs, data) and follow it.
 
-- Whole setup at a glance: `coordinator status`.
+- Whole setup at a glance: `orrin status`.
 - Your lane's state: `{handoff_dir}/HANDOFF_<lane>.md` in your worktree.
 - Launch templates for new lanes: `{briefs_dir}/`.

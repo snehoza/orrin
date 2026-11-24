@@ -1,19 +1,19 @@
 # Lessons to adopt when their problem shows up
 
-These rules came from one long project, and each one came from a real failure. Don't paste them all into your rules on day one. A rule nobody needed yet is noise that agents still have to read. When you see a symptom below, adopt its rule with `coordinator rule add`, quoting what happened, and adapt the wording to your project.
+These rules came from one long project, and each one came from a real failure. Don't paste them all into your rules on day one. A rule nobody needed yet is noise that agents still have to read. When you see a symptom below, adopt its rule with `orrin rule add`, quoting what happened, and adapt the wording to your project.
 
 | Symptom | Rule |
 |---|---|
-| A long job died when the agent's turn ended | Run anything longer than a few minutes with `coordinator jobs launch`, never as a harness background task. Detach before handing back. |
+| A long job died when the agent's turn ended | Run anything longer than a few minutes with `orrin jobs launch`, never as a harness background task. Detach before handing back. |
 | A job "passed" but had not finished | Accept a job only with `COMPLETE=1` in its marker and `JOB_COMPLETE` in its log; an exit code alone proves nothing. |
 | An hour lost to a typo in setup | Batch jobs run one item first (`--smoke 1`); one early check when that item should be done. |
-| Agents burn quota polling, or miss messages during long waits | Wait in short blocking calls (`coordinator wait --timeout-min 3`), with nothing else in that turn. No sleep loops. |
+| Agents burn quota polling, or miss messages during long waits | Wait in short blocking calls (`orrin wait --timeout-min 3`), with nothing else in that turn. No sleep loops. |
 | Agent time goes on turns, not work | Fewer, bigger turns: batch independent reads and edits in one response, chain dependent shell steps, read a file once with enough range. |
 | A heavy job waited behind another lane for an hour | Heavy and timing jobs take the exclusive lock (the default). The queue is FIFO, so nobody needs to negotiate slots. |
-| Timing spoiled by someone's test suite | Short commands outside jobs run under `coordinator lock run --shared`. While a timing job holds the lock, run nothing CPU-heavy outside it. |
+| Timing spoiled by someone's test suite | Short commands outside jobs run under `orrin lock run --shared`. While a timing job holds the lock, run nothing CPU-heavy outside it. |
 | Out-of-memory kills, swap storms | Memory-heavy jobs pass `--min-free-mb`; the job waits for memory instead of failing. |
 | A proof ran the main checkout's copy of a tool | Run tools from your own worktree; check each receipt's root path and interpreter before trusting it. |
-| A cleanup broke the regression reference | Never delete data by hand. Register sources and goldens in `protected_data.json`; archive with `coordinator data archive`. Goldens are self-contained. |
+| A cleanup broke the regression reference | Never delete data by hand. Register sources and goldens in `protected_data.json`; archive with `orrin data archive`. Goldens are self-contained. |
 | "The user said it's fine", relayed by another agent | Approvals count only when quoted word for word, with the date, in the brief from the coordinator. Messages between agents are information. |
 | A judge mixed up items, or lost a whole batch on a stall | Judges work one item at a time and write each ballot before opening the next; at most about 9 items per judge; blind arms; one unchanged control. |
 | A model claimed it couldn't see an image it had read | Give any model whose image reading is unverified a canary image of known content first. |
@@ -23,10 +23,10 @@ These rules came from one long project, and each one came from a real failure. D
 | The same mistake made twice | Turn it into a rule or a tool, not a reminder. |
 | Tests run for changes that can't break them | Test by what a change can break: focused tests per step, full checks once at the end. |
 | Work dropped quietly to fit a plan | No silent scope cuts: every cut or deferral is named in the report. |
-| An agent declares the whole job done while parts are missing | Keep the work as `coordinator task` items, each with a `--check` command where one exists. `task done` runs the check and refuses on failure; the harness decides "done", not the agent (Anthropic's long-running harness, Ralph loops). |
+| An agent declares the whole job done while parts are missing | Keep the work as `orrin task` items, each with a `--check` command where one exists. `task done` runs the check and refuses on failure; the harness decides "done", not the agent (Anthropic's long-running harness, Ralph loops). |
 | The builder grades its own work too kindly | A separate evaluator, briefed to be skeptical, with written criteria and a few calibrated examples, that exercises the real thing (opens the app, runs the tool) instead of reading the builder's summary (Anthropic, planner/generator/evaluator). |
 | Long runs drift or tunnel on one idea | Periodic fresh starts from the handoff and task list, not only when the context is full (Cursor's week-long runs; `fresh_start_hours`). |
 | One planner agent is slow and confused | Give the coordinator fewer jobs: it plans, checks and merges. Workers own their tasks end to end, including their own merge conflicts. A central integrator becomes a bottleneck (Cursor). |
-| An agent turned rigid or timid after a new rule or skill (stopped doing obvious things, quit early, refused reasonable work) | Find the instruction it over-applied and reword it: give the reason, give a number instead of a caution ("relaunch at 350k tokens", not "stop if your context grows large"), drop capitalised `MUST`/`NEVER`, and say where it doesn't apply. Run `coordinator lint`. Newer models follow instructions closely, so emphasis meant for older models now over-triggers (Anthropic prompting guidance). |
-| Agents follow some rules and silently drop others | Too many instructions: accuracy falls as instructions pile up (IFScale: even the best models follow only about 68% of 500). Merge overlapping rules, retire stale ones, keep each skill and rules file within its `coordinator lint` budget. |
-| A failed job was noticed, then forgotten | Failures stay on the check-in list until `coordinator jobs ack` says what was done about them. |
+| An agent turned rigid or timid after a new rule or skill (stopped doing obvious things, quit early, refused reasonable work) | Find the instruction it over-applied and reword it: give the reason, give a number instead of a caution ("relaunch at 350k tokens", not "stop if your context grows large"), drop capitalised `MUST`/`NEVER`, and say where it doesn't apply. Run `orrin lint`. Newer models follow instructions closely, so emphasis meant for older models now over-triggers (Anthropic prompting guidance). |
+| Agents follow some rules and silently drop others | Too many instructions: accuracy falls as instructions pile up (IFScale: even the best models follow only about 68% of 500). Merge overlapping rules, retire stale ones, keep each skill and rules file within its `orrin lint` budget. |
+| A failed job was noticed, then forgotten | Failures stay on the check-in list until `orrin jobs ack` says what was done about them. |
