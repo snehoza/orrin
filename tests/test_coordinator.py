@@ -468,6 +468,28 @@ class HeartbeatDetailTests(Home):
         self.assertIn("2 strong-model agents on account nova", text)
 
 
+class LintTests(unittest.TestCase):
+    def test_flags_what_makes_agents_rigid(self):
+        from coordinator_kit import lint
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            (root / "coordinator.json").write_text("{}")
+            cfg = Config.load(root / "coordinator.json")
+            self.assertEqual(lint.check_rule("Wait in 3-minute calls.", "agents went deaf"), [])
+            self.assertTrue(any("no --why" in w for w in lint.check_rule("Wait in 3-minute calls.", "")))
+            self.assertTrue(any("shouting" in w for w in lint.check_rule("You MUST NEVER push.", "owner")))
+            self.assertEqual(lint.check_text("x.md", "Say `MUST` in code is fine; MUSTs in prose too."), [])
+            for i in range(3):
+                rules.add(cfg, f"rule {i}", "" if i == 0 else "because")
+            skill = root / "skills" / "big" / "SKILL.md"
+            skill.parent.mkdir(parents=True)
+            skill.write_text("word " * 3000)
+            text = "\n".join(lint.run(cfg, max_rules=2))
+            self.assertIn("rules without a reason: R1", text)
+            self.assertIn("3 live rules (more than 2)", text)
+            self.assertIn("over its budget of 2000", text)
+
+
 class StopCheckTests(Home):
     def test_blocks_only_for_agent_work_and_never_loops(self):
         from coordinator_kit import stopcheck

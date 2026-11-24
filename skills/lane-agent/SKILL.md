@@ -10,7 +10,7 @@ metadata:
 
 # Lane agent
 
-You own one lane: one worktree, one branch, one handoff. Your project's agent rules (usually `docs/agents/AGENT_RULES.md`) win over this page where they differ. Every command is in [the command reference](references/COMMANDS.md).
+You own one lane: one worktree, one branch, one handoff. These are working habits, not a script, and they don't change how you think or talk. Your brief and the user's words come first, then your project's agent rules (usually `docs/agents/AGENT_RULES.md`), then this page. If something here would stop you from doing the obviously right thing, do the right thing and say why in your report. Every command is in [the command reference](references/COMMANDS.md).
 
 ## Start
 

@@ -72,6 +72,26 @@ Others building agents that run for hours or weeks arrived at the same parts, of
 
 Two differences stand out. Those systems mostly fix their rules at design time and run against a spec. Here, the rules are expected to change with the person and are recorded as they change. And the machine is shared and small, so fair locking, memory guards and quiet timing matter more than raw parallelism.
 
+## Rules that disable the agent
+
+The opposite failure is just as real: instructions that make a capable agent worse. We hit it repeatedly:
+- A worker brief said to checkpoint "if your context grows large". Four successive workers read that so cautiously that each stopped at about 50k tokens of a 512k window. The fix was a number: relaunch at about 350k.
+- A hand-back tool described as "report when done" was used as a progress report, and the worker ended its run after setup, twice. The fix was to say what calling it does: it ends the run.
+- Agents reproduced an old library's slightly wrong behaviour because "keep the output identical" had become a reflex. My words: "why are u this rigid do whats right man". It became a rule about the rules: they serve the work, and a rule that would cause a regression is flagged, not followed.
+
+Research says the same thing:
+- **Instruction-following drops as instructions pile up.** In IFScale, even the best models follow about 68% of 500 simultaneous instructions.
+- **Long contexts degrade unevenly** (Chroma's context-rot study).
+- **Newer models follow the system prompt closely.** Anthropic's guidance now says capitalised CRITICAL/MUST, written for older models, makes them over-trigger, and that instructions with their reasons generalise better than bare rules.
+- **Skills should be short.** Anthropic's skill-authoring guide treats a skill's tokens as shared space and matches strictness to how fragile the task is.
+- **Minimal harnesses** such as Pi go furthest: four tools and a system prompt under 1,000 tokens.
+
+So the kit keeps instructions light on purpose:
+- Every rule carries the user's words.
+- The rules and skills say plainly that they are defaults, not a script, and that the user's current request comes first.
+- Thresholds are numbers, not cautions.
+- `coordinator lint` flags instruction files over their token budget, capitalised commands, rules without a reason, and rule sets that have grown past about 40 rules.
+
 ## Part 2: what the loop produced
 
 Writing code was not the hard part. Sharing one machine was: agents killed each other's measurements, waited on locks that never came free, burned their budgets polling, and trusted results that came from the wrong checkout. Each failure below happened at least once. Each fix is now a command in `coordinator-kit`, or a lesson you can adopt when its problem shows up.

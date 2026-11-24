@@ -9,7 +9,7 @@ import time
 from importlib import resources
 from pathlib import Path
 
-from . import __version__, board, checkin, data, jobs, lead, lock, rules, settled, status, stopcheck, tasks, tidy, wait
+from . import __version__, board, checkin, data, jobs, lead, lint, lock, rules, settled, status, stopcheck, tasks, tidy, wait
 from .config import NAME as CONFIG_NAME, DEFAULT as CONFIG_DEFAULT, Config
 from .home import home, human_age, tail_lines
 
@@ -197,6 +197,8 @@ def cmd_rule(a) -> int:
         e = rules.add(cfg, a.text, a.why or "", a.by, a.section,
                       [x.strip() for x in (a.supersedes or "").split(",") if x.strip()], audience=a.audience)
         rules.render(cfg)
+        for warning in lint.check_rule(a.text, a.why or ""):
+            print(f"note: {warning}", file=sys.stderr)
         where = "WORKING_WITH_USER.md" if a.audience == "coordinator" else "AGENT_RULES.md"
         print(f"added {e['id']}" + (f", superseding {', '.join(e['supersedes'])}" if e["supersedes"] else "")
               + f"; rendered {cfg.agents_dir / where}")
@@ -290,6 +292,14 @@ def cmd_heartbeat(a) -> int:
         return 0
     print(lead.current_prompt(cfg) or "no prompt recorded yet")
     return 0
+
+
+def cmd_lint(a) -> int:
+    warnings = lint.run(_cfg(a), [Path(p) for p in a.paths])
+    for w in warnings:
+        print(f"- {w}")
+    print("lint: ok" if not warnings else f"lint: {len(warnings)} warning(s)")
+    return 1 if warnings else 0
 
 
 def cmd_handoff(a) -> int:
@@ -408,6 +418,10 @@ def build_parser() -> argparse.ArgumentParser:
 
     ho = sub.add_parser("handoff", help="the lead's own handoff: where it is and how current")
     ho.set_defaults(func=cmd_handoff)
+
+    li = sub.add_parser("lint", help="instructions that could make agents rigid: size, shouting, rules without a reason")
+    li.add_argument("paths", nargs="*", help="more files to check")
+    li.set_defaults(func=cmd_lint)
 
     sc = sub.add_parser("stop-check", help="for a harness stop hook: keep the lead going while it has work it can do")
     sc.set_defaults(func=lambda a: stopcheck.main(_cfg(a), a.home, a.out))

@@ -51,6 +51,15 @@ class SkillSpecTests(unittest.TestCase):
                 self.assertLessEqual(len(Path(link).parts), 2, link)
 
 
+    def test_our_own_instructions_pass_lint(self):
+        """Skills and templates stay small and calm: no shouting, within token budgets."""
+        from coordinator_kit import lint
+        files = list(SKILLS.glob("*/SKILL.md")) + list((SKILLS.parent / "coordinator_kit" / "templates").rglob("*.md"))
+        problems = [w for f in files for w in lint.check_text(f.name, f.read_text(encoding="utf-8"))]
+        self.assertEqual(problems, [])
+        lane = (SKILLS / "lane-agent" / "SKILL.md").read_text(encoding="utf-8")
+        self.assertLess(lint.tokens(lane), 1100, "the lane skill is read by every worker; keep it near 1k tokens")
+
     def test_command_references_match(self):
         a = (SKILLS / "coordinator" / "references" / "COMMANDS.md").read_text(encoding="utf-8")
         b = (SKILLS / "lane-agent" / "references" / "COMMANDS.md").read_text(encoding="utf-8")

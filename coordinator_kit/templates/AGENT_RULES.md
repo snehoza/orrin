@@ -5,6 +5,7 @@ Every agent reads this file before working. It is short on purpose, and it chang
 ## How these rules work
 - **They grow from corrections.** When the user corrects the work ("don't do that", "do it this way"), the coordinator records it the same day: `coordinator rule add "<rule>" --why "<the user's words>"`. A rule it replaces is superseded, not left beside it, so two rules never contradict.
 - **They serve the work.** If following a rule would make the result worse in a case it wasn't written for, say so with evidence and propose the better option. Don't follow it into a regression, and don't quietly ignore it either.
+- **They are defaults with reasons, not a script.** Each rule carries the user's words; use them to judge where it applies. The user's current request and your brief come first. Rules don't change how you think or talk; doing the obvious right thing is never against the rules.
 - **Only the coordinator changes them.** Lane agents propose changes in their report.
 - Ideas already measured, with their results, are in `SETTLED.md`. Read it before proposing work; don't retry a settled idea unchanged.
 - Old rules and why they changed are in `RULES_HISTORY.md`. Settings (status file, heartbeat, the decision boundary, models and budget) are data in `coordinator.json`.
