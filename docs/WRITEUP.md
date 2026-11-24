@@ -55,6 +55,21 @@ The same shape turned up in the always-on personal agents that shipped in autumn
 - **The path from a correction to a rule is explicit.**
 - **Every claimed result has to pass an evidence gate** before it counts.
 
+## What other long-running agent systems found
+
+Others building agents that run for hours or weeks arrived at the same parts, often by the same failures:
+
+| System | What it found | Where it lives in the kit |
+|---|---|---|
+| Anthropic, [long-running harness](https://www.anthropic.com/engineering/effective-harnesses-for-long-running-agents) | An initializer sets up the environment; later sessions read a progress file and git log, take one feature from a JSON list, verify it, commit. Agents only flip a feature to passing, which stops early "done" claims. | The status file and handoffs; `coordinator task` with checks |
+| Anthropic, [planner / generator / evaluator](https://www.anthropic.com/engineering/harness-design-long-running-apps) | Agents overrate their own work. A separate, skeptical evaluator with criteria that tests the live app beats self-critique. Context resets with structured handoffs beat compaction alone. | Independent review and blind judging; fresh relaunch from handoffs |
+| OpenAI, [long-horizon Codex](https://developers.openai.com/blog/run-long-horizon-tasks-with-codex) | A plan with milestones and validations, an operating manual, and a live status log that keeps the run inspectable. | Brief, `AGENT_RULES.md`, the status file |
+| Cursor, [scaling agents](https://cursor.com/blog/scaling-agents) | A flat swarm churned. Planners that create tasks plus workers that own them end to end worked. A central integrator became a bottleneck. Periodic fresh starts are still needed against drift and tunnel vision. | Coordinator plans and checks; lanes own their work; `fresh_start_hours` |
+| [Ralph loop](https://www.thoughtworks.com/radar/techniques/ralph-loop) | A fixed prompt in a loop, a fresh context each pass, and completion decided by tests rather than by the agent. | The heartbeat; `task done` runs the check |
+| [Gas Town](https://cloudnativenow.com/features/gas-town-what-kubernetes-for-ai-coding-agents-actually-looks-like/) | Many agents with defined roles, and work state in git so restarts lose nothing. | Lanes, handoffs and rules in git; markers on disk |
+
+Two differences stand out. Those systems mostly fix their rules at design time and run against a spec. Here, the rules are expected to change with the person and are recorded as they change. And the machine is shared and small, so fair locking, memory guards and quiet timing matter more than raw parallelism.
+
 ## Part 2: what the loop produced
 
 Writing code was not the hard part. Sharing one machine was: agents killed each other's measurements, waited on locks that never came free, burned their budgets polling, and trusted results that came from the wrong checkout. Each failure below happened at least once. Each fix is now a command in `coordinator-kit`, or a lesson you can adopt when its problem shows up.

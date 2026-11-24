@@ -16,7 +16,8 @@ NAME = "coordinator.json"
 DEFAULT = {
     "agents_dir": "docs/agents",
     "status_file": "TODO.md",
-    "heartbeat": {"every_minutes": 30, "silent_lane_minutes": 45, "status_stale_commits": 10},
+    "heartbeat": {"every_minutes": 30, "silent_lane_minutes": 45, "status_stale_commits": 10,
+                  "fresh_start_hours": 8},
     "usage_commands": [],
     "boundary": {
         "decide": ["technical choices: design, libraries, tests, tools, which lane does what",

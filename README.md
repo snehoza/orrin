@@ -12,6 +12,7 @@ What makes that work isn't a fixed rule set. It is a small loop:
 The kit gives you that loop and the tools that grew out of running it:
 
 - **`coordinator checkin`**: the heartbeat. Usage from any provider, failed or stalled jobs, quiet workers, a status file that fell behind the commits.
+- **`coordinator task`**: a task list where "done" needs a passing check or a completed job as evidence, so agents can't declare victory early.
 - **`coordinator rule add/retire`**: rules that evolve, with your words, the date and their history. Rendered into the agents' rules file along with the decision boundary and model policy from `coordinator.json`.
 - **Detached jobs** survive the agent that started them, and their completion markers can't lie. **Short blocking waits** keep agents cheap and still able to hear messages.
 - **A fair machine lock,** first come first served, with an exclusive mode for heavy work and a shared mode for tests. It is safe when a holder crashes.

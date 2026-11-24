@@ -9,7 +9,7 @@ import time
 from importlib import resources
 from pathlib import Path
 
-from . import __version__, board, checkin, data, jobs, lock, rules, status, tidy, wait
+from . import __version__, board, checkin, data, jobs, lock, rules, status, tasks, tidy, wait
 from .config import NAME as CONFIG_NAME, DEFAULT as CONFIG_DEFAULT, Config
 from .home import home, human_age, tail_lines
 
@@ -94,6 +94,9 @@ def cmd_jobs(a) -> int:
         return 0
     if a.jobs_cmd == "stop":
         print(wait.summary(jobs.stop(folder)))
+        return 0
+    if a.jobs_cmd == "ack":
+        print(wait.summary(jobs.ack(folder, a.note or "")) + " (acknowledged)")
         return 0
     if a.jobs_cmd == "log":
         lines = tail_lines(folder / f"{folder.name}.log", 1 << 20)
@@ -216,6 +219,29 @@ def cmd_rule(a) -> int:
     return 0
 
 
+def cmd_task(a) -> int:
+    cfg = _cfg(a)
+    split = lambda v: [x.strip() for x in (v or "").split(",") if x.strip()]  # noqa: E731
+    try:
+        if a.task_cmd == "add":
+            t = tasks.add(cfg, a.title, a.check, split(a.after), a.lane)
+        elif a.task_cmd == "claim":
+            t = tasks.claim(cfg, a.id, a.lane)
+        elif a.task_cmd == "done":
+            t = tasks.done(cfg, a.id, a.evidence, a.home, a.out, a.check_timeout_min * 60)
+        elif a.task_cmd == "reopen":
+            t = tasks.reopen(cfg, a.id, a.why)
+        else:
+            rows = tasks.load(cfg)
+            print(tasks.dumps(rows) if a.json else tasks.render(rows, a.all))
+            return 0
+    except tasks.TaskError as e:
+        print(f"refused: {e}", file=sys.stderr)
+        return 1
+    print(tasks.render([t], show_all=True))
+    return 0
+
+
 def cmd_checkin(a) -> int:
     cfg = _cfg(a)
     d = checkin.collect(cfg, a.home, a.out, run_usage=not a.no_usage)
@@ -300,6 +326,28 @@ def build_parser() -> argparse.ArgumentParser:
     pol = sub.add_parser("policy", help="show the project settings in effect (coordinator.json merged with defaults)")
     pol.set_defaults(func=cmd_policy)
 
+    tk = sub.add_parser("task", help="a task list where done needs evidence: add, claim, done, reopen, list")
+    tks = tk.add_subparsers(dest="task_cmd", required=True)
+    ta = tks.add_parser("add")
+    ta.add_argument("title")
+    ta.add_argument("--check", help="shell command that must exit 0 before the task can be marked done")
+    ta.add_argument("--after", help="comma-separated task ids that must be done first")
+    ta.add_argument("--lane")
+    tc = tks.add_parser("claim")
+    tc.add_argument("id")
+    tc.add_argument("--lane", required=True)
+    td = tks.add_parser("done", help="runs the check; refuses unless it passes (or evidence is given and valid)")
+    td.add_argument("id")
+    td.add_argument("--evidence", default="", help="job:NAME (must be COMPLETE=1), a commit, or what proves it")
+    td.add_argument("--check-timeout-min", type=float, default=30)
+    tr = tks.add_parser("reopen")
+    tr.add_argument("id")
+    tr.add_argument("--why", required=True)
+    tl = tks.add_parser("list")
+    tl.add_argument("--all", action="store_true", help="include done tasks")
+    tl.add_argument("--json", action="store_true")
+    tk.set_defaults(func=cmd_task)
+
     j = sub.add_parser("jobs", help="detached jobs with completion markers")
     js = j.add_subparsers(dest="jobs_cmd", required=True)
     jl = js.add_parser("launch", help="start a detached job: coordinator jobs launch --name N -- CMD ...")
@@ -319,10 +367,13 @@ def build_parser() -> argparse.ArgumentParser:
     jl.add_argument("command", nargs=argparse.REMAINDER)
     jl.set_defaults(parser=jl)
     for name, helptext in (("status", "state of one job"), ("stop", "stop a job and its whole process tree"),
-                           ("log", "the last lines of a job's log")):
+                           ("log", "the last lines of a job's log"),
+                           ("ack", "mark a failed/stopped/stalled job as handled so check-ins stop raising it")):
         x = js.add_parser(name, help=helptext)
         x.add_argument("job", help="job name or job folder")
         x.add_argument("--json", action="store_true")
+        if name == "ack":
+            x.add_argument("--note", help="what was done about it")
         if name == "log":
             x.add_argument("-n", "--lines", type=int, default=20)
             x.add_argument("--grep", help="only lines matching this regular expression")

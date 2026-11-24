@@ -23,3 +23,8 @@ These rules came from one long project, and each one came from a real failure. D
 | The same mistake made twice | Turn it into a rule or a tool, not a reminder. |
 | Tests run for changes that can't break them | Test by what a change can break: focused tests per step, full checks once at the end. |
 | Work dropped quietly to fit a plan | No silent scope cuts: every cut or deferral is named in the report. |
+| An agent declares the whole job done while parts are missing | Keep the work as `coordinator task` items, each with a `--check` command where one exists. `task done` runs the check and refuses on failure; the harness decides "done", not the agent (Anthropic's long-running harness, Ralph loops). |
+| The builder grades its own work too kindly | A separate evaluator, briefed to be skeptical, with written criteria and a few calibrated examples, that exercises the real thing (opens the app, runs the tool) instead of reading the builder's summary (Anthropic, planner/generator/evaluator). |
+| Long runs drift or tunnel on one idea | Periodic fresh starts from the handoff and task list, not only when the context is full (Cursor's week-long runs; `fresh_start_hours`). |
+| One planner agent is slow and confused | Give the coordinator fewer jobs: it plans, checks and merges. Workers own their tasks end to end, including their own merge conflicts. A central integrator becomes a bottleneck (Cursor). |
+| A failed job was noticed, then forgotten | Failures stay on the check-in list until `coordinator jobs ack` says what was done about them. |

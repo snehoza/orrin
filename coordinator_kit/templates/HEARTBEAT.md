@@ -5,10 +5,11 @@ The coordinator keeps working, unattended, by checking in on a fixed beat (`coor
 ## Check-in prompt
 
 > Check-in. Run `coordinator checkin --quiet`. Act on every item under NEEDS ATTENTION:
-> - fix or relaunch failed jobs;
+> - fix or relaunch failed jobs, then `coordinator jobs ack` them;
 > - nudge a quiet lane, or resume it from its handoff;
 > - make the status file true;
-> - plan the next work against the usage that is left.
+> - checkpoint and relaunch lanes flagged as running too long;
+> - plan the next work against the usage that is left, starting from the ready tasks (`coordinator task list`).
 >
 > When a lane hands back: verify its result (markers, receipts, an independent review), merge it if allowed, and start the next work.
 > Stay inside the decision boundary in AGENT_RULES.md, and ask the user only about what is listed there.

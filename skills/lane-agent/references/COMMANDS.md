@@ -9,7 +9,12 @@ Global options go before the subcommand: `coordinator [--home DIR] [--out JOBS_D
 | Command | What it does |
 |---|---|
 | `coordinator init [ROOT] [--agents-dir docs/agents]` | Set up a project, never overwriting. Writes `coordinator.json` (settings as data) and, in the agents dir: `AGENT_RULES.md` (a short frame plus a generated block), `HEARTBEAT.md` (the check-in prompt), `LESSONS.md` (rules to adopt when their problem shows up), `HANDOFF.md`, an `AGENTS.md` pointer, an example `protected_data.json`, and `briefs/` (lane, research, review, finish). |
-| `coordinator checkin [--quiet] [--no-usage] [--json]` | The heartbeat. Shows usage from each `usage_commands` entry ("unavailable" if one fails, never zero), and jobs finished since the last check-in. Under NEEDS ATTENTION it lists failed or stalled jobs, lanes quiet longer than `silent_lane_minutes`, stale lanes, long lock waits, and a status file that missed the last `status_stale_commits` commits. `--quiet` prints one line when nothing needs attention. |
+| `coordinator checkin [--quiet] [--no-usage] [--json]` | The heartbeat. Shows the output of each `usage_commands` entry ("unavailable" if one fails, never zero) and the jobs that finished OK since the last check-in. NEEDS ATTENTION lists:<br>• a usage line at or above `checkpoint_usage_percent`;<br>• failed, stopped or stalled jobs, kept until `jobs ack`;<br>• lanes quiet longer than `silent_lane_minutes` (unless their bound job is still running);<br>• stale lanes, and lanes running longer than `fresh_start_hours`;<br>• lock waits over 30 minutes;<br>• a status file that missed the last `status_stale_commits` commits;<br>• ready tasks when nothing is running.<br>`--quiet` prints one line when nothing needs attention. |
+| `coordinator task add "TITLE" [--check CMD] [--after T1,T2] [--lane L]` | Add a task to `<agents_dir>/tasks.json`. `--check` is a shell command that must exit 0 before the task can be marked done. |
+| `coordinator task claim T3 --lane L` | Claim a task. Refused while its dependencies are open or another lane holds it. |
+| `coordinator task done T3 [--evidence job:NAME\|TEXT]` | Runs the check and refuses unless it passes. Without a check, evidence is required; `job:NAME` must be a job with `COMPLETE=1`. The evidence and the check's last output lines are recorded. |
+| `coordinator task reopen T3 --why "REASON"` | It wasn't done after all. |
+| `coordinator task list [--all] [--json]` | Open, claimed and blocked tasks; `--all` adds the done ones. |
 | `coordinator rule add "TEXT" --why "WORDS" [--by user] [--section S] [--supersedes R3,R5]` | Record a rule with the user's words and the date, superseding older rules. Re-renders the rules. |
 | `coordinator rule retire R7 --why "REASON"` | Drop a rule that no longer serves the work. |
 | `coordinator rule list [--all] [--json]` | Live rules; `--all` adds the superseded and retired ones. |
@@ -18,7 +23,7 @@ Global options go before the subcommand: `coordinator [--home DIR] [--out JOBS_D
 
 `coordinator.json` keys:
 - `agents_dir`, `status_file`;
-- `heartbeat`: `every_minutes`, `silent_lane_minutes`, `status_stale_commits`;
+- `heartbeat`: `every_minutes`, `silent_lane_minutes`, `status_stale_commits`, `fresh_start_hours`;
 - `usage_commands`: a list of commands, each a string or a list of arguments;
 - `boundary`: `decide` and `ask` lists;
 - `models`: `roles`, `fallback`, `checkpoint_usage_percent`, `relaunch_context_tokens`.
@@ -31,6 +36,7 @@ Global options go before the subcommand: `coordinator [--home DIR] [--out JOBS_D
 | `coordinator jobs list` | All jobs. |
 | `coordinator jobs log N [-n 20] [--grep RE]` | The last lines of the log, optionally filtered. |
 | `coordinator jobs stop N` | Stop the job and its whole process tree. Its marker gets `REASON=stopped`. |
+| `coordinator jobs ack N [--note TEXT]` | Mark a failed, stopped or stalled job as handled, so check-ins stop raising it. |
 
 `jobs launch` options:
 - `--lock exclusive|shared|none`: the machine lock held while the job runs. The default, `exclusive`, means heavy jobs run one at a time.

@@ -7,7 +7,7 @@ import time
 import unittest
 from pathlib import Path
 
-from coordinator_kit import board, checkin, cli, data, jobs, lock, procs, rules, tidy, wait
+from coordinator_kit import board, checkin, cli, data, jobs, lock, procs, rules, tasks, tidy, wait
 from coordinator_kit.config import Config
 
 PY = sys.executable
@@ -356,9 +356,10 @@ class CheckinTests(Home):
         self.assertTrue(d["usage"][0]["ok"])
         self.assertIn("40% used", d["usage"][0]["lines"][0])
         self.assertFalse(d["usage"][1]["ok"])
-        # the next check-in no longer reports the same finished job
+        # a failure stays on the list until it is acknowledged
         d2 = checkin.collect(cfg, self.home, run_usage=False)
-        self.assertFalse(any("broke" in a for a in d2["attention"]))
+        self.assertTrue(any("broke" in a for a in d2["attention"]))
+        jobs.ack(jobs.resolve("broke", root=self.home))
         board.update("alpha", {"activity": "y"}, root=self.home)
         (proj / "TODO.md").write_text("status 2")
         git("add", "-A")
@@ -366,6 +367,81 @@ class CheckinTests(Home):
         d3 = checkin.collect(cfg, self.home, run_usage=False)
         self.assertEqual(d3["attention"], [])
         self.assertIn("nothing needs attention", checkin.render(d3, quiet=True))
+
+
+class TaskTests(Home):
+    def setUp(self):
+        super().setUp()
+        self.proj = Path(self._tmp.name) / "proj"
+        self.proj.mkdir()
+        (self.proj / "coordinator.json").write_text("{}")
+        self.cfg = Config.load(self.proj / "coordinator.json")
+
+    def test_done_needs_a_passing_check_or_valid_evidence(self):
+        t1 = tasks.add(self.cfg, "build", check=f'"{PY}" -c "import sys; sys.exit(1)"')
+        t2 = tasks.add(self.cfg, "ship", after=[t1["id"]])
+        with self.assertRaises(tasks.TaskError):  # dependency open
+            tasks.claim(self.cfg, t2["id"], "beta")
+        tasks.claim(self.cfg, t1["id"], "alpha")
+        with self.assertRaises(tasks.TaskError):  # another lane holds it
+            tasks.claim(self.cfg, t1["id"], "beta")
+        with self.assertRaisesRegex(tasks.TaskError, "check failed"):
+            tasks.done(self.cfg, t1["id"])
+        data = json.loads(tasks.path(self.cfg).read_text())
+        data["tasks"][0]["check"] = f'"{PY}" -c "print(42)"'
+        tasks.path(self.cfg).write_text(json.dumps(data))
+        done = tasks.done(self.cfg, t1["id"])
+        self.assertEqual((done["status"], done["check_output"]), ("done", ["42"]))
+        with self.assertRaisesRegex(tasks.TaskError, "needs --evidence"):
+            tasks.done(self.cfg, t2["id"])
+        jobs.launch("bad", [PY, "-c", "import sys; sys.exit(1)"], root=self.home, lock="none")
+        wait.wait([jobs.resolve("bad", root=self.home)], 30, 0.1)
+        with self.assertRaisesRegex(tasks.TaskError, "not a job with COMPLETE=1"):
+            tasks.done(self.cfg, t2["id"], "job:bad", root=self.home)
+        jobs.launch("good", [PY, "-c", "pass"], root=self.home, lock="none")
+        wait.wait([jobs.resolve("good", root=self.home)], 30, 0.1)
+        self.assertEqual(tasks.done(self.cfg, t2["id"], "job:good", root=self.home)["status"], "done")
+        tasks.reopen(self.cfg, t2["id"], "regressed")
+        self.assertEqual(tasks.summary(self.cfg)["ready"][0]["id"], t2["id"])
+
+
+class HeartbeatDetailTests(Home):
+    def setUp(self):
+        super().setUp()
+        self.proj = Path(self._tmp.name) / "proj"
+        self.proj.mkdir()
+        (self.proj / "TODO.md").write_text("status")
+        (self.proj / "coordinator.json").write_text(json.dumps({
+            "heartbeat": {"silent_lane_minutes": 1, "fresh_start_hours": 1},
+            "usage_commands": [[PY, "-c", "print('5h 93% used | week 40% used')"]]}))
+        self.cfg = Config.load(self.proj / "coordinator.json")
+
+    def age_lane(self, lane, seconds, started=0):
+        f = board.board_dir(self.home) / f"{lane}.json"
+        row = json.loads(f.read_text())
+        row["updated"] -= seconds
+        row["started"] -= started
+        f.write_text(json.dumps(row))
+
+    def test_failures_persist_until_acked_and_busy_lanes_are_not_quiet(self):
+        jobs.launch("broke", [PY, "-c", "import sys; sys.exit(2)"], root=self.home, lock="none")
+        wait.wait([jobs.resolve("broke", root=self.home)], 30, 0.1)
+        jobs.launch("long", [PY, "-c", "import time; time.sleep(60)"], root=self.home, lock="none")
+        board.update("busy", {"job": "long"}, root=self.home)
+        board.update("idle", {}, root=self.home)
+        self.age_lane("busy", 600)
+        self.age_lane("idle", 600, started=7200)
+        first = "\n".join(checkin.collect(self.cfg, self.home)["attention"])
+        self.assertIn("usage at 93%", first)
+        self.assertIn("job broke failed", first)
+        self.assertIn("lane idle quiet", first)
+        self.assertIn("lane idle running for", first)
+        self.assertNotIn("lane busy quiet", first)
+        second = "\n".join(checkin.collect(self.cfg, self.home, run_usage=False)["attention"])
+        self.assertIn("job broke failed", second)
+        jobs.ack(jobs.resolve("broke", root=self.home), "fixed the import")
+        third = "\n".join(checkin.collect(self.cfg, self.home, run_usage=False)["attention"])
+        self.assertNotIn("broke", third)
 
 
 if __name__ == "__main__":

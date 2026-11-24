@@ -270,6 +270,7 @@ def status(folder: Path) -> dict:
         rec["marker"] = done.read_text(encoding="utf-8", errors="replace").strip()
         rec["complete"] = rec["complete"] and f"JOB_COMPLETE {name}" in lines
         rec["state"] = "done" if rec["complete"] else ("stopped" if rec["reason"] == "stopped" else "failed")
+        rec["acked"] = (folder / f"{name}.ack").exists()
         rec["finished"] = done.stat().st_mtime
         return rec
     pid = read_json(folder / f"{name}.pid")
@@ -280,6 +281,7 @@ def status(folder: Path) -> dict:
     rec["pid"] = pid.get("pid")
     if not procs.alive(pid.get("pid"), pid.get("ident")):
         rec["state"] = "stalled"  # the runner died without writing its marker (machine restart, kill -9)
+        rec["acked"] = (folder / f"{name}.ack").exists()
         return rec
     phase_text = (folder / f"{name}.phase").read_text(encoding="utf-8").split() if (folder / f"{name}.phase").exists() else []
     phase = phase_text[0] if phase_text else "running"
@@ -295,6 +297,13 @@ def list_jobs(out=None, root=None) -> list[dict]:
     base = jobs_dir(out, root)
     rows = [status(p) for p in base.iterdir() if p.is_dir() and (p / "job.json").exists()]
     return sorted(rows, key=lambda r: r.get("created") or 0)
+
+
+def ack(folder: Path, note: str = "") -> dict:
+    """Mark a failed, stopped or stalled job as handled, so check-ins stop raising it."""
+    folder = Path(folder)
+    write_text(folder / f"{folder.name}.ack", f"{iso()} {note}".strip() + "\n")
+    return status(folder)
 
 
 def stop(folder: Path) -> dict:

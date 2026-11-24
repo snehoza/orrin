@@ -28,7 +28,7 @@ def update(lane: str, fields: dict | None = None, note: str | None = None, pid: 
     base = board_dir(root)
     with mutex(base / ".mutex"):
         path = base / f"{lane}.json"
-        row = read_json(path) or {"lane": lane, "notes": []}
+        row = read_json(path) or {"lane": lane, "notes": [], "started": time.time()}
         row.update({k: v for k, v in (fields or {}).items() if v is not None})
         if pid:
             row["pid"], row["pid_ident"] = pid, procs.identity(pid)
