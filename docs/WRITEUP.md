@@ -15,7 +15,7 @@ The lead agent ran for days at a time, unattended between my messages. It:
 - merged clean work;
 - stopped only when the work was done or genuinely needed me.
 
-It did not drift. This post is about why. My first guess was "good rules", and the history says otherwise.
+Over that time it stayed on what I wanted. This post is about why. My first guess was "good rules", and the history says otherwise.
 
 ## Part 1: the loop
 
@@ -70,7 +70,14 @@ Others building agents that run for hours or weeks arrived at the same parts, of
 | [Ralph loop](https://www.thoughtworks.com/radar/techniques/ralph-loop) | A fixed prompt in a loop, a fresh context each pass, and completion decided by tests rather than by the agent. | The heartbeat; `task done` runs the check |
 | [Gas Town](https://cloudnativenow.com/features/gas-town-what-kubernetes-for-ai-coding-agents-actually-looks-like/) | Many agents with defined roles, and work state in git so restarts lose nothing. | Lanes, handoffs and rules in git; markers on disk |
 
-Two differences stand out. Those systems mostly fix their rules at design time and run against a spec. Here, the rules are expected to change with the person and are recorded as they change. And the machine is shared and small, so fair locking, memory guards and quiet timing matter more than raw parallelism.
+| [firstmate](https://github.com/kunchenguid/firstmate) | You talk to one lead agent. It runs workers in separate worktrees, supervises them, keeps its state on disk and asks only for real decisions. A script waits on the workers, so waiting costs no tokens. | The same shape: a lead, lanes, a decision boundary, state on disk |
+| [oh-my-claudecode](https://github.com/Yeachan-Heo/oh-my-claudecode) | Ready-made workflows with fixed stages and specialist roles. Its Ralph skill records which checks already fail before work starts. | `orrin task baseline` takes that one idea |
+
+firstmate is the closest, and going by its README it does more to run the workers themselves. `orrin` doesn't start agents; your harness does. It adds the parts that grow with one person and one machine:
+- **Rules are expected to change with the person.** Each correction is recorded with its date and reason, and replaces the rule it contradicts.
+- **The machine is shared and small,** so fair locking, memory guards and quiet timing matter more than raw parallelism.
+
+I compared against public descriptions, not by running the other systems.
 
 ## Rules that disable the agent
 
@@ -90,7 +97,31 @@ So the kit keeps instructions light on purpose:
 - Every rule carries the user's words.
 - The rules and skills say plainly that they are defaults, not a script, and that the user's current request comes first.
 - Thresholds are numbers, not cautions.
-- `orrin lint` flags instruction files over their token budget, capitalised commands, rules without a reason, and rule sets that have grown past about 40 rules.
+- `orrin lint` flags instruction files over their token budget, capitalised commands, rules without a reason, rules tied to one case, and rule sets that have grown past about 40 rules.
+
+## Rules that evolve can overfit
+
+In 2026 several labs published work on agents that improve their own harness: the prompts, tools, memory and control flow around a fixed model. A rules file that grows from corrections is a small, slow version of that, so their failures apply here.
+
+| Work | What it found |
+|---|---|
+| [RRSI](https://arxiv.org/abs/2609.24972), Google Cloud AI Research | Unrestricted self-editing overfits. On office-work tasks it gained 3.4 points on the tasks it trained on and 0.6 on new kinds, using 2.4 times the tokens. Small edits, a noise threshold, a critic and pruning raised new kinds by 3.9 at 1.6 times the tokens. |
+| [Harness-Delta Attribution](https://arxiv.org/abs/2610.22466), Amazon and NYU | Across 21 settings with significant gains, on average 54% of the gain was overfitting and 14% was extra compute. |
+| [SkillBoost](https://arxiv.org/abs/2607.26643), Alibaba and Zhejiang University | Learned skills overfit to a few cases. Accept a change only when it helps within a regression limit. |
+| [CIG](https://arxiv.org/abs/2610.05039), NTU and Alibaba's Tongyi Lab | Link evidence, hypothesis, change and outcome, so a new result can overturn an old belief. |
+| [VERSE](https://arxiv.org/abs/2610.02616), MIT and Amazon | In a controlled study, an optimizer that improved itself did not get better without checks that actually run. |
+| [SEAL](https://arxiv.org/abs/2607.24300), Chinese Academy of Sciences | An agent that writes its own tests can pass them while real results fall. |
+| [Cordis](https://arxiv.org/abs/2608.25512), Peking University and DeepSeek | Every component's effects should be fully reversible, so a running harness can change safely. |
+
+The results are the authors' own. They exposed a gap: our rules changed easily, but nothing recorded whether a change worked. Four small additions came from this:
+- **A rule can name the failure it should stop,** and `orrin rule outcome` logs whether it helped, hurt, or let the failure come back.
+- **`orrin lint` lists rules to review.** My own preferences need no proof.
+- **Rules tied to one file or case are flagged.** The general cause belongs in the rule; the case belongs in its reason.
+- **A task's check is recorded when the task is added.** Changing it needs a reason, and changes to the files it runs are noted. This catches shortcuts, not a determined attacker.
+
+There is no automatic harness search. It needs benchmarks and many runs, and the risk is paying for complexity that doesn't carry over.
+
+The same caution applies to this post. The evidence is one person, mostly one project, with no control group. The loop worked there; I haven't shown that it generalises.
 
 ## Part 2: what the loop produced
 
@@ -218,9 +249,9 @@ The fixes:
 | Command | Problem it solves |
 |---|---|
 | `orrin checkin` | The heartbeat: usage, failed jobs, quiet lanes, status-file drift (Part 1) |
-| `orrin rule add / retire / render` | Rules that change with the user, with dates, quotes and history; `--for coordinator` for how to work with them (Part 1) |
+| `orrin rule add / outcome / retire / render` | Rules that change with the user, with dates, quotes and history; `--for coordinator` for how to work with them (Part 1) |
 | `orrin settled`, `orrin handoff`, `orrin heartbeat set` | What was already measured; the lead's own state; the check-in prompt's history (Part 1) |
-| `orrin task` | Done decided by a check, not by the agent |
+| `orrin task` | Done decided by a check, not by the agent; old failures don't count, changed checks are refused |
 | `orrin.json`, `orrin policy` | The decision boundary, models and budget, as data (Part 1) |
 | `orrin jobs launch / status / log / stop` | Jobs that survive the agent, with markers that can't lie (§1, §2) |
 | `orrin wait` | Short blocking waits (§2) |

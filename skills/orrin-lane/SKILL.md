@@ -22,7 +22,7 @@ You own one lane: one worktree, one branch, one handoff. These are working habit
 
 If the project keeps a task list (`orrin task list`):
 - claim your task with `orrin task claim T3 --lane <lane>`;
-- mark it done only with `orrin task done T3`, which runs its check. If the check fails, the task isn't done; fix the work, never the check.
+- mark it done only with `orrin task done T3`, which runs its check. If the check fails, the task isn't done; fix the work, not the check. If the check already fails before you start, run `orrin task baseline T3` first; if the check itself is wrong, use `orrin task set-check` with the reason.
 
 ## Long or heavy work: run it as a job
 

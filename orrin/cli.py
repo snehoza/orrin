@@ -195,13 +195,22 @@ def cmd_rule(a) -> int:
     cfg = _cfg(a)
     if a.rule_cmd == "add":
         e = rules.add(cfg, a.text, a.why or "", a.by, a.section,
-                      [x.strip() for x in (a.supersedes or "").split(",") if x.strip()], audience=a.audience)
+                      [x.strip() for x in (a.supersedes or "").split(",") if x.strip()], audience=a.audience,
+                      prevents=a.prevents or "")
         rules.render(cfg)
         for warning in lint.check_rule(a.text, a.why or ""):
             print(f"note: {warning}", file=sys.stderr)
         where = "WORKING_WITH_USER.md" if a.audience == "coordinator" else "AGENT_RULES.md"
         print(f"added {e['id']}" + (f", superseding {', '.join(e['supersedes'])}" if e["supersedes"] else "")
               + f"; rendered {cfg.agents_dir / where}")
+        return 0
+    if a.rule_cmd == "outcome":
+        try:
+            rules.outcome(cfg, a.id, a.result, a.note, a.by)
+        except ValueError as e:
+            print(f"refused: {e}", file=sys.stderr)
+            return 1
+        print(f"{a.id}: {a.result} recorded")
         return 0
     if a.rule_cmd == "retire":
         rules.retire(cfg, a.id, a.why)
@@ -220,6 +229,9 @@ def cmd_rule(a) -> int:
         tag = "" if r["status"] == "live" else f" [{r['status']}]"
         who = " for coordinator" if r.get("audience") == "coordinator" else ""
         print(f"{r['id']}{tag} ({r['section']}{who}, {r['by']} {r['date']}): {r['text']}")
+        if r["outcomes"]:
+            counts = [o["result"] for o in r["outcomes"]]
+            print("   outcomes: " + ", ".join(f"{x} {counts.count(x)}" for x in rules.OUTCOMES if x in counts))
     if not rows:
         print("no rules yet")
     return 0
@@ -230,11 +242,16 @@ def cmd_task(a) -> int:
     split = lambda v: [x.strip() for x in (v or "").split(",") if x.strip()]  # noqa: E731
     try:
         if a.task_cmd == "add":
-            t = tasks.add(cfg, a.title, a.check, split(a.after), a.lane)
+            t = tasks.add(cfg, a.title, a.check, split(a.after), a.lane, a.home)
         elif a.task_cmd == "claim":
             t = tasks.claim(cfg, a.id, a.lane)
         elif a.task_cmd == "done":
             t = tasks.done(cfg, a.id, a.evidence, a.home, a.out, a.check_timeout_min * 60)
+        elif a.task_cmd == "set-check":
+            t = tasks.set_check(cfg, a.id, a.check, a.why, a.home)
+        elif a.task_cmd == "baseline":
+            t = tasks.baseline(cfg, a.id, a.why, a.pattern, a.home, a.check_timeout_min * 60)
+            print(f"baseline: exit {t['baseline']['exit']}, {len(t['baseline']['failures'])} known failures")
         elif a.task_cmd == "reopen":
             t = tasks.reopen(cfg, a.id, a.why)
         else:
@@ -373,7 +390,13 @@ def build_parser() -> argparse.ArgumentParser:
     ra.add_argument("--section", default="General")
     ra.add_argument("--for", dest="audience", choices=("agents", "coordinator"), default="agents",
                     help="agents: every agent follows it; coordinator: how the lead works with this user")
+    ra.add_argument("--prevents", help="the failure this rule should stop, so its effect can be checked later")
     ra.add_argument("--supersedes", help="comma-separated rule ids this replaces")
+    ro = rs.add_parser("outcome", help="log what a rule did: helped, hurt, or the failure came back")
+    ro.add_argument("id")
+    ro.add_argument("result", choices=rules.OUTCOMES)
+    ro.add_argument("--note", required=True, help="what was observed")
+    ro.add_argument("--by", default="coordinator")
     rr = rs.add_parser("retire", help="drop a rule that no longer serves the work")
     rr.add_argument("id")
     rr.add_argument("--why", required=True)
@@ -419,7 +442,7 @@ def build_parser() -> argparse.ArgumentParser:
     ho = sub.add_parser("handoff", help="the lead's own handoff: where it is and how current")
     ho.set_defaults(func=cmd_handoff)
 
-    li = sub.add_parser("lint", help="instructions that could make agents rigid: size, shouting, rules without a reason")
+    li = sub.add_parser("lint", help="instructions that could make agents rigid: size, shouting, rules without a reason or a benefit")
     li.add_argument("paths", nargs="*", help="more files to check")
     li.set_defaults(func=cmd_lint)
 
@@ -440,6 +463,15 @@ def build_parser() -> argparse.ArgumentParser:
     td.add_argument("id")
     td.add_argument("--evidence", default="", help="job:NAME (must be COMPLETE=1), a commit, or what proves it")
     td.add_argument("--check-timeout-min", type=float, default=30)
+    tb = tks.add_parser("baseline", help="run the check before the work and record what already fails")
+    tb.add_argument("id")
+    tb.add_argument("--why", default="", help="needed once claimed, or to record it again")
+    tb.add_argument("--pattern", default=tasks.FAILURE, help="regex that finds failure names in the output")
+    tb.add_argument("--check-timeout-min", type=float, default=30)
+    ts = tks.add_parser("set-check", help="change a task's check, with the reason on record")
+    ts.add_argument("id")
+    ts.add_argument("--check", required=True)
+    ts.add_argument("--why", required=True)
     tr = tks.add_parser("reopen")
     tr.add_argument("id")
     tr.add_argument("--why", required=True)

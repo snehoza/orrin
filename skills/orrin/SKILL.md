@@ -38,7 +38,7 @@ then run `orrin checkin`. Keep `LEAD_HANDOFF.md` current as you go: it is state,
   - About how you work with them (replies, how to ask, what to show): `orrin rule add "..." --why "..." --for coordinator`.
   - About how the work is done: the same command without `--for`.
 
-  Retire a rule that hurts the work, and say why.
+  Retire a rule that hurts the work, and say why. When a rule targets a failure, name it with `--prevents`, and log what happens with `orrin rule outcome`. Preferences need no proof.
 - **Measured ideas go into `orrin settled`,** so nobody retries them. Reopen one only when something changed.
 - **A problem that repeats becomes a tool or a rule.** A one-off doesn't.
 

@@ -7,12 +7,16 @@ import time
 import unittest
 from pathlib import Path
 
-from orrin import board, checkin, cli, data, jobs, lead, lock, procs, rules, settled, tasks, tidy, wait
+from orrin import board, checkin, cli, data, jobs, lead, lint, lock, procs, rules, settled, tasks, tidy, wait
 from orrin.config import Config
 
 PY = sys.executable
 ROOT = Path(__file__).resolve().parents[1]
 ENV = dict(os.environ, PYTHONPATH=os.pathsep.join(p for p in (str(ROOT), os.environ.get("PYTHONPATH", "")) if p))
+
+
+_HOME = tempfile.TemporaryDirectory()  # never touch the real ~/.orrin
+os.environ["ORRIN_HOME"] = _HOME.name
 
 
 def dead_pid() -> int:
@@ -324,6 +328,29 @@ class RuleTests(unittest.TestCase):
             rules.retire(self.cfg, "R1", "already superseded")
 
 
+    def test_outcomes_and_review_candidates(self):
+        pref = rules.add(self.cfg, "Keep replies short", "too long", date="2020-01-01")
+        kept = rules.add(self.cfg, "Wait in short calls", "missed messages", prevents="missed messages", date="2020-01-01")
+        quiet = rules.add(self.cfg, "Batch reads", "slow", prevents="too many turns", date="2020-01-01")
+        back = rules.add(self.cfg, "Run from the worktree", "wrong proof", prevents="wrong proof")
+        bad = rules.add(self.cfg, "Keep output identical", "drift", by="coordinator")
+        narrow = rules.add(self.cfg, "Skip photo 170652", "bad edge")
+        rules.outcome(self.cfg, kept["id"], "helped", "heard the stop message in lane a")
+        rules.outcome(self.cfg, back["id"], "recurred", "lane b ran main's copy")
+        rules.outcome(self.cfg, bad["id"], "hurt", "copied an old bug")
+        with self.assertRaisesRegex(ValueError, "note"):
+            rules.outcome(self.cfg, kept["id"], "helped", " ")
+        live = [r for r in rules.state(self.cfg).values() if r["status"] == "live"]
+        text = "\n".join(lint.check_outcomes(live))
+        for r, words in ((quiet, "no outcome"), (back, "came back"), (bad, "hurt more")):
+            self.assertIn(f"{r['id']}", text)
+            self.assertIn(words, text)
+        for r in (pref, kept, narrow):
+            self.assertNotIn(f"{r['id']} ", text)
+        self.assertIn(f"{narrow['id']} names one case", "\n".join(lint.run(self.cfg)))
+        self.assertEqual(lint.check_rule("Relaunch at 350000 tokens; see AGENT_RULES.md", "why"), [])
+
+
 class CheckinTests(Home):
     def test_flags_failures_quiet_lanes_and_status_drift(self):
         proj = Path(self._tmp.name) / "proj"
@@ -391,8 +418,17 @@ class TaskTests(Home):
         with self.assertRaisesRegex(tasks.TaskError, "check failed"):
             tasks.done(self.cfg, t1["id"])
         data = json.loads(tasks.path(self.cfg).read_text())
-        data["tasks"][0]["check"] = f'"{PY}" -c "print(42)"'
+        old, data["tasks"][0]["check"] = data["tasks"][0]["check"], f'"{PY}" -c "print(42)"'
         tasks.path(self.cfg).write_text(json.dumps(data))
+        with self.assertRaisesRegex(tasks.TaskError, "changed outside"):  # an edited check is refused
+            tasks.done(self.cfg, t1["id"])
+        data["tasks"][0]["check"] = None  # so is a removed one
+        tasks.path(self.cfg).write_text(json.dumps(data))
+        with self.assertRaisesRegex(tasks.TaskError, "changed outside"):
+            tasks.done(self.cfg, t1["id"], "looks fine")
+        data["tasks"][0]["check"] = old
+        tasks.path(self.cfg).write_text(json.dumps(data))
+        tasks.set_check(self.cfg, t1["id"], f'"{PY}" -c "print(42)"', "the old check tested the wrong build")
         done = tasks.done(self.cfg, t1["id"])
         self.assertEqual((done["status"], done["check_output"]), ("done", ["42"]))
         with self.assertRaisesRegex(tasks.TaskError, "needs --evidence"):
@@ -406,6 +442,36 @@ class TaskTests(Home):
         self.assertEqual(tasks.done(self.cfg, t2["id"], "job:good", root=self.home)["status"], "done")
         tasks.reopen(self.cfg, t2["id"], "regressed")
         self.assertEqual(tasks.summary(self.cfg)["ready"][0]["id"], t2["id"])
+
+
+    def test_only_new_failures_count_and_changed_check_files_are_noted(self):
+        script = self.proj / "check.py"
+
+        def write(*fails, code=1):
+            body = "".join(f"print('FAILED tests/{f} - boom')\n" for f in fails)
+            script.write_text(body + f"raise SystemExit({code})\n")
+
+        write("old")
+        t = tasks.add(self.cfg, "fix parser", check=f'"{PY}" check.py')
+        tasks.baseline(self.cfg, t["id"])
+        with self.assertRaisesRegex(tasks.TaskError, "--why"):  # recording it again could hide regressions
+            tasks.baseline(self.cfg, t["id"])
+        write("old", "new")
+        with self.assertRaisesRegex(tasks.TaskError, "new failures: tests/new$"):
+            tasks.done(self.cfg, t["id"])
+        write("old", code=3)  # a different exit code is not "only old failures"
+        with self.assertRaisesRegex(tasks.TaskError, "exit 3"):
+            tasks.done(self.cfg, t["id"])
+        write("old")
+        with script.open("a") as f:
+            f.write("# edited\n")
+        done = tasks.done(self.cfg, t["id"])
+        self.assertEqual(done["known_failures"], ["tests/old"])
+        self.assertIn("check.py", done["notes"][0])
+        self.assertIn("note:", tasks.render([done], show_all=True))
+        bare = tasks.add(self.cfg, "opaque", check=f'"{PY}" -c "raise SystemExit(1)"')
+        with self.assertRaisesRegex(tasks.TaskError, "no failure names"):
+            tasks.baseline(self.cfg, bare["id"])
 
 
 class HeartbeatDetailTests(Home):

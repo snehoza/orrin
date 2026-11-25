@@ -13,6 +13,10 @@ followed well. An agent with a stack of rigid rules stops doing obvious things.
   makes newer models over-trigger; say it plainly and give the reason;
 * **no reason**: live rules recorded without the user's words or a reason, since a rule with its
   "why" generalises to new cases and a bare rule gets applied blindly;
+* **too specific**: a rule that names one file, photo or case, which fits that case and no other;
+* **outcomes**: rules that hurt, rules whose failure came back, and rules with a named failure but
+  nothing recorded after ``REVIEW_DAYS``. These are candidates to look at. A preference of the
+  user's needs no proof;
 * **too many**: more live rules than ``max_rules``. Merge, or retire what no longer serves the
   work.
 
@@ -21,6 +25,7 @@ These are warnings for the coordinator to act on, not gates on the agent.
 from __future__ import annotations
 
 import re
+from datetime import date
 from pathlib import Path
 
 from . import rules
@@ -31,6 +36,9 @@ BUDGETS = {"SKILL.md": 2000, "AGENT_RULES.md": 2500, "WORKING_WITH_USER.md": 150
            "LEAD_HANDOFF.md": 1500, "HANDOFF.md": 1500}
 DEFAULT_BUDGET = 3000
 MAX_RULES = 40
+REVIEW_DAYS = 30
+SPECIFIC = re.compile(r"\b[\w./\\-]+\.(?:jpe?g|png|webp|gif|tiff?|npy|npz|csv|mp4|py|ts|tsx|js|jsx|rs|go|java|c|cpp)\b(?::\d+)?"
+                      r"|\b(?:photo|image|case|sample|issue|ticket)\s+#?\w*\d{3,}\b", re.I)
 
 
 def tokens(text: str) -> int:
@@ -58,6 +66,32 @@ def check_rule(text: str, why: str) -> list[str]:
     if not why.strip():
         out.append("rule has no --why: record the user's words or the incident, so agents can tell "
                    "where it applies and where it doesn't")
+    m = SPECIFIC.search(text)
+    if m:
+        out.append(f"rule names one case ({m.group(0)}): state the general cause, and keep the case in --why")
+    return out
+
+
+def check_outcomes(live: list[dict], today: date | None = None) -> list[str]:
+    today = today or date.today()
+    out = []
+    for r in live:
+        results = [o["result"] for o in r.get("outcomes", [])]
+        helped, hurt = results.count("helped"), results.count("hurt")
+        users = r["by"] == "user" and not r.get("prevents")
+        if hurt > helped:
+            fix = "raise it with the user" if users else "reword, narrow or retire it"
+            out.append(f"{r['id']} hurt more often than it helped ({hurt} to {helped}): {fix}")
+        elif results and results[-1] == "recurred":
+            out.append(f"{r['id']}: the failure came back with the rule in place. Reword it, make it a tool, or retire it")
+        elif r.get("prevents") and not results:
+            try:
+                age = (today - date.fromisoformat(r["date"])).days
+            except ValueError:
+                continue
+            if age >= REVIEW_DAYS:
+                out.append(f"{r['id']} has no outcome after {age} days (should prevent: {r['prevents']}): check whether "
+                           "that still happens, then log it or retire the rule")
     return out
 
 
@@ -75,6 +109,11 @@ def run(cfg: Config, extra: list[Path] | None = None, max_rules: int = MAX_RULES
     bare = [r["id"] for r in live if not r.get("why")]
     if bare:
         out.append(f"rules without a reason: {', '.join(bare)}. Add the user's words or the incident, or retire them")
+    for r in live:
+        m = SPECIFIC.search(r["text"])
+        if m:
+            out.append(f"{r['id']} names one case ({m.group(0)}): state the general cause, and keep the case in its reason")
+    out += check_outcomes(live)
     if len(live) > max_rules:
         out.append(f"{len(live)} live rules (more than {max_rules}): the more rules, the fewer get followed well. "
                    "Merge overlapping ones and retire what no longer serves the work")

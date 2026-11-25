@@ -5,6 +5,8 @@ First release.
 - The loop:
   - `orrin checkin`: the heartbeat. Usage commands, jobs finished or failed since the last check-in, quiet and stale lanes, long lock waits, status-file drift.
   - `orrin rule add/retire/list/render`: dated rules that supersede each other, rendered into `AGENT_RULES.md` with the history in `RULES_HISTORY.md`.
+  - `orrin rule add --prevents` and `orrin rule outcome`: what a rule should stop, and what it did; `orrin lint` lists rules to review and rules tied to one case.
+  - `orrin task baseline` and `set-check`: only new failures count, and a check changed any other way is refused.
   - `orrin.json` and `orrin policy`: the status file, heartbeat, decision boundary and model policy, as data.
   - `orrin task add/claim/done/reopen/list`: a dependency-aware task list where done needs a passing check or a completed job.
   - `orrin jobs ack`: failures stay on the check-in until acknowledged.

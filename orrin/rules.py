@@ -5,6 +5,7 @@ user says "don't do that" or "do it this way", and the rule changes the same day
 cheap to change here:
 
 * ``add`` records a rule with the user's own words and the date, optionally superseding older rules;
+* ``outcome`` logs what a rule did: it helped, it hurt, or the failure it should prevent came back;
 * ``retire`` drops a rule that no longer serves the work, with the reason;
 * ``render`` writes the live rules (plus the decision boundary and model policy from
   ``orrin.json``) between markers in ``AGENT_RULES.md``, and the retired ones into
@@ -39,10 +40,12 @@ def state(cfg: Config) -> dict[str, dict]:
     rules: dict[str, dict] = {}
     for e in events(cfg):
         if e["event"] == "add":
-            rules[e["id"]] = dict(e, status="live")
+            rules[e["id"]] = dict(e, status="live", outcomes=[])
             for old in e.get("supersedes", []):
                 if old in rules and rules[old]["status"] == "live":
                     rules[old].update(status="superseded", superseded_by=e["id"], ended=e["date"])
+        elif e["event"] == "outcome" and e["id"] in rules:
+            rules[e["id"]]["outcomes"].append({k: e[k] for k in ("result", "note", "by", "date")})
         elif e["event"] == "retire" and e["id"] in rules:
             rules[e["id"]].update(status="retired", ended=e["date"], retire_why=e.get("why", ""))
     return rules
@@ -59,9 +62,12 @@ AUDIENCES = ("agents", "coordinator")
 
 
 def add(cfg: Config, text: str, why: str = "", by: str = "user", section: str = "General",
-        supersedes: list[str] | None = None, date: str | None = None, audience: str = "agents") -> dict:
+        supersedes: list[str] | None = None, date: str | None = None, audience: str = "agents",
+        prevents: str = "") -> dict:
     """``audience='agents'``: every agent follows it (AGENT_RULES.md). ``'coordinator'``: how the lead works
-    with this user (WORKING_WITH_USER.md): reply style, what to ask and how, what they care about."""
+    with this user (WORKING_WITH_USER.md): reply style, what to ask and how, what they care about.
+    ``prevents`` names the failure the rule should stop, which is what makes its effect checkable. A plain
+    preference of the user's has none and needs no proof."""
     if audience not in AUDIENCES:
         raise ValueError(f"audience must be one of {AUDIENCES}")
     rules = state(cfg)
@@ -71,7 +77,25 @@ def add(cfg: Config, text: str, why: str = "", by: str = "user", section: str = 
     number = 1 + max((int(r[1:]) for r in rules if r[1:].isdigit()), default=0)
     event = {"event": "add", "id": f"R{number}", "text": text.strip(), "why": why.strip(), "by": by,
              "section": section, "supersedes": list(supersedes or []), "date": date or time.strftime("%Y-%m-%d"),
-             "audience": audience}
+             "audience": audience, "prevents": prevents.strip()}
+    _append(cfg, event)
+    return event
+
+
+OUTCOMES = ("helped", "hurt", "recurred")
+
+
+def outcome(cfg: Config, rule_id: str, result: str, note: str, by: str = "coordinator", date: str | None = None) -> dict:
+    """Log what a live rule did. ``note`` says what was observed, so the claim can be checked."""
+    if result not in OUTCOMES:
+        raise ValueError(f"result must be one of {OUTCOMES}")
+    if not note.strip():
+        raise ValueError("an outcome needs a note saying what was observed")
+    rules = state(cfg)
+    if rule_id not in rules or rules[rule_id]["status"] != "live":
+        raise ValueError(f"no live rule {rule_id}")
+    event = {"event": "outcome", "id": rule_id, "result": result, "note": note.strip(), "by": by,
+             "date": date or time.strftime("%Y-%m-%d")}
     _append(cfg, event)
     return event
 
