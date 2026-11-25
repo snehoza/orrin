@@ -236,10 +236,10 @@ def kill_tree(pid: int, grace: float = 5.0) -> None:
     while time.monotonic() < deadline:
         try:
             os.killpg(pid, 0)
-        except ProcessLookupError:
+        except (ProcessLookupError, PermissionError):  # macOS: EPERM when only an unreaped process is left
             return
         time.sleep(0.1)
     try:
         os.killpg(pid, signal.SIGKILL)
-    except ProcessLookupError:
+    except (ProcessLookupError, PermissionError):
         pass
