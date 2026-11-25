@@ -20,4 +20,4 @@ First release.
 - `orrin lock`: a fair FIFO machine lock with exclusive and shared modes; crash-safe; refuses nesting.
 - `orrin board`, `status`, `tidy`, `data` (protected-data registry, archive-only cleanup), and `init` (rules frame, heartbeat prompt, lessons, briefs, handoff).
 - Agent Skills: `orrin` (lead session) and `orrin-lane` (workers).
-- Write-up: docs/WRITEUP.md.
+- Write-up: docs/WRITEUP.md, with the longer docs/NOTES.md.

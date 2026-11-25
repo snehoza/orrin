@@ -26,7 +26,7 @@ The kit gives you that loop and the tools that grew out of running it:
 
 Standard-library Python 3.11+, no daemon, state in plain files. Linux, macOS and Windows.
 
-Why it works, with numbers from a three-month project, and the failures behind each tool, are in [the write-up](https://github.com/snehoza/orrin/blob/main/docs/WRITEUP.md).
+Why it works is in [the write-up](https://github.com/snehoza/orrin/blob/main/docs/WRITEUP.md). The failures behind each tool are in [the notes](https://github.com/snehoza/orrin/blob/main/docs/NOTES.md).
 
 ## Install
 
