@@ -334,7 +334,7 @@ class RuleTests(unittest.TestCase):
         quiet = rules.add(self.cfg, "Batch reads", "slow", prevents="too many turns", date="2020-01-01")
         back = rules.add(self.cfg, "Run from the worktree", "wrong proof", prevents="wrong proof")
         bad = rules.add(self.cfg, "Keep output identical", "drift", by="coordinator")
-        narrow = rules.add(self.cfg, "Skip photo 170652", "bad edge")
+        narrow = rules.add(self.cfg, "Skip photo 123456", "bad edge")
         rules.outcome(self.cfg, kept["id"], "helped", "heard the stop message in lane a")
         rules.outcome(self.cfg, back["id"], "recurred", "lane b ran main's copy")
         rules.outcome(self.cfg, bad["id"], "hurt", "copied an old bug")
@@ -516,9 +516,9 @@ class HeartbeatDetailTests(Home):
     def test_agents_from_the_harness(self):
         now = time.time()
         agents = [
-            {"name": "a1", "state": "running", "updated": now - 3600, "context_tokens": 400000, "model": "sol-x", "account": "nova"},
-            {"name": "a2", "state": "running", "updated": now, "context_tokens": 1000, "model": "sol-y", "account": "nova"},
-            {"name": "a3", "state": "idle", "updated": now - 99999, "model": "sol-z", "account": "nova"},
+            {"name": "a1", "state": "running", "updated": now - 3600, "context_tokens": 400000, "model": "sol-x", "account": "acct1"},
+            {"name": "a2", "state": "running", "updated": now, "context_tokens": 1000, "model": "sol-y", "account": "acct1"},
+            {"name": "a3", "state": "idle", "updated": now - 99999, "model": "sol-z", "account": "acct1"},
         ]
         script = self.proj / "agents.py"
         script.write_text("import json\nprint(json.dumps(" + repr(agents) + "))\n")
@@ -531,7 +531,7 @@ class HeartbeatDetailTests(Home):
         self.assertIn("agent a1 at 400,000 tokens", text)
         self.assertNotIn("agent a2 quiet", text)
         self.assertNotIn("a3", text.replace("a1, a2", ""))  # idle agents are not chased
-        self.assertIn("2 strong-model agents on account nova", text)
+        self.assertIn("2 strong-model agents on account acct1", text)
 
 
 class LintTests(unittest.TestCase):
